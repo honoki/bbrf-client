@@ -1,0 +1,31 @@
+service: bbrf
+
+frameworkVersion: ">=1.2.0 <2.0.0"
+
+provider:
+  name: aws
+  runtime: python3.6
+  environment:
+    BBRF_COUCHDB_URL: ${file(~/.bbrf/config.json):couchdb}
+    BBRF_USERNAME: ${file(~/.bbrf/config.json):username}
+    BBRF_PASSWORD: ${file(~/.bbrf/config.json):password}
+    BBRF_SLACK_TOKEN: ${file(~/.bbrf/config.json):slack_token}
+
+functions:
+  bbrf:
+    handler: lambda.endpoint
+    events:
+      - http:
+          path: bbrf
+          method: post
+          
+plugins:
+  - serverless-python-requirements
+  
+package:
+  exclude:
+    - .env/**
+    
+custom:
+  pythonRequirements:
+    pythonBin: /usr/bin/python3
