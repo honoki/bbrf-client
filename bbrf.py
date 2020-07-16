@@ -506,10 +506,10 @@ class BBRFClient:
             
         if self.arguments['alert']:
             if self.arguments['<message>']:
-                msg = self.arguments['<message>']
+                self.api.create_alert(self.arguments['<message>'], self.get_program(), self.arguments['-s'])
             elif self.arguments['-']:
-                msg = sys.stdin.read().split('\n')
-            self.api.create_alert(msg, self.get_program(), self.arguments['-s'])
+                for line in sys.stdin:
+                    self.api.create_alert(line, self.get_program(), self.arguments['-s'])
 
         try:
             self.save_config()
