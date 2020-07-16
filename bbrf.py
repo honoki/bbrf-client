@@ -6,15 +6,16 @@ Usage:
   bbrf (new|use) <program> [--disabled --passive-only]
   bbrf program (list|active|scope [--wildcard [--top]] [-p <program>])
   bbrf domains [--view <view>] [-p <program> --all]
-  bbrf domain (add|remove|update) ([-] | <domain>...) [-p <program>] [-s <source>]
+  bbrf domain (add|remove|update) ( - | <domain>...) [-p <program>] [-s <source>]
   bbrf ips [--view <view>] [-p <program> | --all]
-  bbrf ip (add|remove|update) ([-] | <ip>...) [-p <program>] [-s <source>]
+  bbrf ip (add|remove|update) ( - | <ip>...) [-p <program>] [-s <source>]
   bbrf (inscope|outscope) (add|remove) ([-] | <element>...) [-p <program>]
-  bbrf blacklist (add|remove) ([-] | <element>...) [-p <program>]
+  bbrf blacklist (add|remove) ( - | <element>...) [-p <program>]
+  bbrf task (list|(add|remove) <task>)
   bbrf run <task> [-p <program>]
   bbrf show <document>
   bbrf listen
-  bbrf alert <message> [-s <source>]
+  bbrf alert ( - | <message>) [-s <source>]
   bbrf --version
 
 Options:
@@ -68,7 +69,10 @@ class BBRFClient:
 
     def list_programs(self):
         return self.api.get_programs()
-
+    
+    def list_tasks(self):
+        return [r['key'] for r in self.api.get_tasks()]
+    
     '''
     Specify a program to be used, and avoid having to type -p <name>
     for every command. The config is stored in CONFIG_FILE.
@@ -483,6 +487,14 @@ class BBRFClient:
                 elif self.arguments['-']:
                     self.remove_blacklist(sys.stdin.read().split('\n'))
                     
+        if self.arguments['task']:
+            if self.arguments['list']:
+                return "\n".join(self.list_tasks())
+            if self.arguments['remove']:
+                return self.api.remove_document('task', {'key': self.arguments['<task>']})
+            if self.arguments['add']:
+                return "Not yet implemented..."
+        
         if self.arguments['run']:
             return self.api.run_task(self.arguments['<task>'], self.get_program())
         
@@ -493,7 +505,11 @@ class BBRFClient:
             self.listen_for_changes()
             
         if self.arguments['alert']:
-            self.api.create_alert(self.arguments['<message>'], self.get_program(), self.arguments['-s'])
+            if self.arguments['<message>']:
+                msg = self.arguments['<message>']
+            elif self.arguments['-']:
+                msg = sys.stdin.read().split('\n')
+            self.api.create_alert(msg, self.get_program(), self.arguments['-s'])
 
         try:
             self.save_config()

@@ -7,7 +7,7 @@ from slackclient import SlackClient
 class BBRFApi:
     BBRF_API = None
     auth = None
-    doctypes = ['ip', 'domain', 'program']
+    doctypes = ['ip', 'domain', 'program', 'task']
     sc = None
     
     requests_session = None
@@ -44,6 +44,23 @@ class BBRFApi:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/domains', headers={"Authorization": self.auth})
         if 'error' in r.json():
             raise Exception(r.json()['error'])
+        return [r['value'] for r in r.json()['rows']]
+    
+    '''
+    Get all documents of a certain type
+    '''
+    def get_documents(self, doctype, program_name = None):
+        if doctype not in self.doctypes:
+            raise Exception('This doctype is not supported')
+        if doctype is "task":
+            return self.get_tasks()
+        if program_name:
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/'+doctype+'s?key="'+program_name+'"', headers={"Authorization": self.auth})
+        else:
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/'+doctype+'s', headers={"Authorization": self.auth})
+        if 'error' in r.json():
+            raise Exception(r.json()['error'])
+        print(r.json())
         return [r['value'] for r in r.json()['rows']]
     
     '''
@@ -117,6 +134,24 @@ class BBRFApi:
         r = self.requests_session.put(self.BBRF_API+'/'+program_name+'?rev='+program['_rev'], json.dumps(program), headers={"Authorization": self.auth})
         if 'error' in r.json():
             raise Exception(r.json()['error'])
+            
+    '''
+    Get a list of all tasks.
+    '''
+    def get_tasks(self):
+        r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/tasks', headers={"Authorization": self.auth})
+        if 'error' in r.json():
+            raise Exception(r.json()['error'])
+        return r.json()['rows']
+    
+    '''
+    Register a new task.
+    '''
+    def register_task(self, name):
+        r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/tasks', headers={"Authorization": self.auth})
+        if 'error' in r.json():
+            raise Exception(r.json()['error'])
+        return [r['key'] for r in r.json()['rows']]
     
     '''
     Add a list of documents to a program in bulk.
@@ -158,19 +193,42 @@ class BBRFApi:
             raise Exception(r.json()['error'])
         
     '''
-    Remove a document from the database, based on the document identifier.
+    Get the identifier of a document based on a set of properties defined in propmap
+    '''
+    def get_document_id_by_properties(self, doctype, propmap):
+        if doctype not in self.doctypes:
+            raise Exception('This doctype is not supported')
+        docs = self.get_documents(doctype)
+        for doc in docs:
+            matches = True
+            for prop in propmap.keys():
+                if prop not in doc or propmap[prop] != doc[prop]:
+                    matches = False
+            if matches:
+                return doc['id']
+                
+    '''
+    Remove a document from the database, based on a document property.
     '''
     def remove_document(self, doctype, document):
         if doctype not in self.doctypes:
             raise Exception('This doctype is not supported')
+            
+        if type(document) is dict:
+            document = self.get_document_id_by_properties(doctype, document)
+            print(document)
+            
         # Need to encode the document so it can handle CIDR ranges including /
         r = self.requests_session.get(self.BBRF_API+'/'+requests.utils.quote(document, safe=''), headers={"Authorization": self.auth})
+        print(r.json())
         if 'error' in r.json() and r.json()['error'] != 'not_found':
             raise Exception(r.json()['error'])
         elif 'error' in r.json() and r.json()['error'] == 'not_found':
+            print("here3")
             return
         if 'type' in r.json() and not r.json()['type'] == doctype:
             raise Exception('The specified document (type: '+r.json()['type']+') is not of the requested type '+doctype)
+            print("here4")
         if '_rev' in r.json():
             r = self.requests_session.delete(self.BBRF_API+'/'+requests.utils.quote(document, safe='')+'?rev='+r.json()['_rev'], headers={"Authorization": self.auth})
             if 'error' in r.json() and r.json()['error'] != 'not_found':
@@ -319,6 +377,8 @@ class BBRFApi:
     Push an alert into the DB
     '''
     def create_alert(self, alert_message, program_name, source_name):
+        if type(alert_message) is list:
+            alert_message = '\n'.join(alert_message)
         alert = {
             "type": "alert",
             "program": program_name,
