@@ -127,6 +127,11 @@ Usage:
   bbrf --version
 ```
 
+### Listener
+
+In order to process changes and alerts as they are pushed to the data store, you need to have an active listener running somewhere: `bbrf listen`
+
+
 ## AWS Lambda
 
 The bbrf client can be deployed in AWS Lambda via the [Serverless framework](https://www.serverless.com/).

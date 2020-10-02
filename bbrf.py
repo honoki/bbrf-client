@@ -7,8 +7,9 @@ Usage:
   bbrf program (list|active|scope [--wildcard [--top]] [-p <program>])
   bbrf domains [--view <view>] [-p <program> --all]
   bbrf domain (add|remove|update) ( - | <domain>...) [-p <program>] [-s <source>]
-  bbrf ips [--view <view>] [-p <program> | --all]
+  bbrf ips [--view <view>] [--filter-cdns] [-p <program> | --all]
   bbrf ip (add|remove|update) ( - | <ip>...) [-p <program>] [-s <source>]
+  bbrf ports (add|remove) ( - | <service>...) [-p <program>]
   bbrf (inscope|outscope) (add|remove) ([-] | <element>...) [-p <program>]
   bbrf blacklist (add|remove) ( - | <element>...) [-p <program>]
   bbrf task (list|(add|remove) <task>)
@@ -16,12 +17,12 @@ Usage:
   bbrf show <document>
   bbrf listen
   bbrf alert ( - | <message>) [-s <source>]
-  bbrf --version
 
 Options:
   -h --help     Show this screen.
   -p <program>  Select a program to limit the command to. Not required when the command "use" has been run before.
   -s <source>   Provide an optional source string to store information about the source of the modified data.
+  -v --version  Show the program version
 """
 from docopt import docopt
 import os
@@ -95,6 +96,13 @@ class BBRFClient:
             if s.startswith('*.') and domain.endswith('.'+s[2:]):
                 return True
         return False
+    
+    '''
+    Check whether an IP belongs to a CIDR range
+    '''
+    def ip_in_cidr(self, ip, cidr):
+        from ipaddress import ip_network, ip_address
+        return ip_address(ip) in ip_network(cidr)
 
     '''
     Make abstraction of where the program comes from. It should be either
@@ -430,9 +438,23 @@ class BBRFClient:
                     self.update_domains(sys.stdin.read().split('\n'))
 
         if self.arguments['ips']:
+            if self.arguments['--filter-cdns']:
+                ips = self.list_ips(self.arguments['--all'])
+                with open(os.path.expanduser('~/.bbrf/cidr-filter.txt')) as f:
+                    cidrs = f.read().splitlines()
+                filtered = []
+                for ip in ips:
+                    cdn = False
+                    for cidr in cidrs:
+                        if self.ip_in_cidr(ip, cidr):
+                            cdn = True
+                            break
+                    if not cdn:
+                        filtered.append(ip)
+                return "\n".join(filtered)
             if self.arguments['<view>']:
                 return "\n".join(self.list_documents_view("ip", self.arguments['<view>'], self.arguments['--all']))
-            return "\n".join(self.list_ips(self.arguments['--all']))
+            return "\n".join(self.list_ips(self.arguments['--all']))    
 
         if self.arguments['ip']:
             if self.arguments['add']:
