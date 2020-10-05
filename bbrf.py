@@ -177,12 +177,17 @@ class BBRFClient:
             ips = []
             
             if ':' in domain:
+                # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
+                ip4regex = re.compile('^([0-9]{1,3}\.){3}[0-9]{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))?$')
                 domain, ips = domain.split(':')
                 ips = ips.split(',')
                 
                 for ip in ips:
                     if ip in blacklist:
                         blacklisted_ip = True
+                    if not ip4regex.match(ip):
+                        ips.remove(ip)
+                    
             
             # housekeeping
             if domain.endswith('.'):
