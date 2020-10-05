@@ -38,42 +38,63 @@ To use the bbrf client, makes sure you set up the bbrf server first. The tool wa
 
 ```
 curl -X PUT https://<your-instance>:6984/_users/org.couchdb.user:bbrf \
+     -u admin:password \
      -H "Accept: application/json" \
      -H "Content-Type: application/json" \
      -d '{"name": "bbrf", "password": "<choose a decent password>", "roles": [], "type": "user"}'
 ```
 
 * Create a new database `bbrf` via the web interface, and allow the user `bbrf` to access it.
-* Create at least the following views in `https://<your-instance>:6984/_utils/#database/bbrf/_design/bbrf`
-
+* Create at least the following views via `https://<your-instance>:6984/_utils/#/database/bbrf/new_view`
+    - `domains`
 ```json
-{
-  "_id": "_design/bbrf",
-  "_rev": "...",
-  "views": {
-    "domains": {
-      "map": "function (doc) {\n  if(doc.type == \"domain\")\n  emit(doc.program, doc._id);\n}"
-    },
-    "ips": {
-      "map": "function (doc) {\n  if(doc.type == \"ip\")\n  emit(doc.program, doc._id);\n}"
-    },
-    "programs": {
-      "map": "function (doc) {\n  if(doc.type == \"program\")\n  emit(doc._id, 1);\n}"
-    },
-    "domains_resolved": {
-      "map": "function (doc) {\n  if(doc.type == \"domain\" && doc.ips.length > 0)\n  emit(doc.program, doc._id);\n}"
-    },
-    "domains_unresolved": {
-      "map": "function (doc) {\n  if(doc.type == \"domain\" && (!doc.hasOwnProperty(\"ips\") || doc.ips.length == 0))\n  emit(doc.program, doc._id);\n}"
-    },
-    "alerts": {
-      "map": "function (doc) {\n  if(doc.type == \"alert\")\n  emit(doc.program, doc.message);\n}"
-    }
-  },
-  "language": "javascript"
+function (doc) {
+  if(doc.type == "domain")
+  emit(doc.program, doc._id);
 }
 ```
-
+    - `ips`
+```json
+function (doc) {
+  if(doc.type == "ip")
+  emit(doc.program, doc._id);
+}
+```
+    - `programs`
+```json
+function (doc) {
+  if(doc.type == "program")
+  emit(doc._id, 1);
+}
+```
+    - `domains_resolved`
+```json
+function (doc) {
+  if(doc.type == "domain" && doc.ips.length > 0)
+  emit(doc.program, doc._id);
+}
+```
+    - `domains_unresolved`
+```json
+function (doc) {
+  if(doc.type == "domain" && (!doc.hasOwnProperty("ips") || doc.ips.length === 0))
+  emit(doc.program, doc._id);
+}
+```
+    - `alerts`
+```json
+function (doc) {
+  if(doc.type == "alert")
+  emit(doc.program, doc.message);
+}
+```
+    - `tasks`
+```json
+function (doc) {
+  if(doc.type == "task")
+  emit( doc.name, 1);
+}
+```
 
 ### Client
 
@@ -103,7 +124,7 @@ Create a file `~/.bbrf/config.json` with the required configuration:
 {
     "username": "bbrf",
     "password": "<your secure password>",
-    "url": "https://<your-instance>:6984/bbrf",
+    "couchdb": "https://<your-instance>:6984/bbrf",
     "slack_token": "<a slack token to receive notifications>"
 }
 ```
