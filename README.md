@@ -47,49 +47,56 @@ curl -X PUT https://<your-instance>:6984/_users/org.couchdb.user:bbrf \
 * Create a new database `bbrf` via the web interface, and allow the user `bbrf` to access it.
 * Create at least the following views via `https://<your-instance>:6984/_utils/#/database/bbrf/new_view`
     - `domains`
-```json
+    
+    ```javascript
 function (doc) {
   if(doc.type == "domain")
   emit(doc.program, doc._id);
 }
 ```
     - `ips`
-```json
+    
+    ```javascript
 function (doc) {
   if(doc.type == "ip")
   emit(doc.program, doc._id);
 }
 ```
     - `programs`
-```json
+    
+    ```javascript
 function (doc) {
   if(doc.type == "program")
   emit(doc._id, 1);
 }
 ```
     - `domains_resolved`
-```json
+    
+    ```javascript
 function (doc) {
   if(doc.type == "domain" && doc.ips.length > 0)
   emit(doc.program, doc._id);
 }
 ```
     - `domains_unresolved`
-```json
+    
+    ```javascript
 function (doc) {
   if(doc.type == "domain" && (!doc.hasOwnProperty("ips") || doc.ips.length === 0))
   emit(doc.program, doc._id);
 }
 ```
     - `alerts`
-```json
+    
+    ```javascript
 function (doc) {
   if(doc.type == "alert")
   emit(doc.program, doc.message);
 }
 ```
     - `tasks`
-```json
+    
+    ```javascript
 function (doc) {
   if(doc.type == "task")
   emit( doc.name, 1);
