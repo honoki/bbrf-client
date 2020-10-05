@@ -26,86 +26,65 @@ bbrf domains
 
 ## Installation
 
-### Setting up using setup script
-
-  * `git clone https://github.com/honoki/bbrf-client`
-  * `cd bbrf-client`
-  * `chmod +x init.sh`
-  * `./init.sh`
-Follow the instructions it will prompt you for couchdb installation
 ### CouchDB server 
 
-To use the bbrf client, makes sure you set up the bbrf server first. The tool was built to work with the document-based database [CouchDB](couchdb.apache.org). Below is a suggested way of deploying, but YMMV.
+To use the bbrf client, make sure you set up the bbrf server first. The tool was built to work with the document-based database [CouchDB](couchdb.apache.org). Below is a suggested way of deploying, but YMMV.
 
-* Deploy the [CouchDB image from Bitnami](https://aws.amazon.com/marketplace/pp/B01M0RA8RQ?ref=cns_srchrow) from the AWS Marketplace;
-* My current setup runs on a `t3a.small` tier and seems to effortly support 116 thousand documents at the time of writing;
+#### Manually
+
+* Deploy the [CouchDB image from Bitnami](https://aws.amazon.com/marketplace/pp/B01M0RA8RQ?ref=cns_srchrow) from the AWS Marketplace or using docker:
+    ```bash
+    curl -sSL https://raw.githubusercontent.com/bitnami/bitnami-docker-couchdb/master/docker-compose.yml > docker-compose.yml
+    docker-compose up -d
+    ```
+* My current setup runs on a `t3a.small` tier in AWS and seems to effortlessly support 116 thousand documents at the time of writing;
 * I strongly suggest enabling (only) https on your server;
 * When up and running, browse to the web interface on `https://<your-instance>:6984/_utils/#/_all_dbs` and check if everything's OK
 * Create the `bbrf` user (additional documentation [here](https://docs.couchdb.org/en/stable/intro/security.html)) via curl:
 
-```
-curl -X PUT https://<your-instance>:6984/_users/org.couchdb.user:bbrf \
-     -u admin:password \
-     -H "Accept: application/json" \
-     -H "Content-Type: application/json" \
-     -d '{"name": "bbrf", "password": "<choose a decent password>", "roles": [], "type": "user"}'
-```
+    ```bash
+    curl -X PUT https://<your-instance>:6984/_users/org.couchdb.user:bbrf \
+         -u admin:password \
+         -H "Accept: application/json" \
+         -H "Content-Type: application/json" \
+         -d '{"name": "bbrf", "password": "<choose a decent password>", "roles": [], "type": "user"}'
+    ```
 
-* Create a new database `bbrf` via the web interface, and allow the user `bbrf` to access it.
-* Create at least the following views via `https://<your-instance>:6984/_utils/#/database/bbrf/new_view`
-    - `domains`:
-    ```javascript
-    function (doc) {
-      if(doc.type == "domain")
-      emit(doc.program, doc._id);
-    }
+* Create a new database called `bbrf`:
+
+    ```bash
+    curl -X PUT https://<your-instance>:6984/bbrf \
+         -u admin:password
     ```
-    - `ips`
-    ```javascript
-    function (doc) {
-      if(doc.type == "ip")
-      emit(doc.program, doc._id);
-    }
+
+* Grant access rights to the new database:
+    ```bash
+    curl -X PUT https://<your-instance>:6984/bbrf/_security \
+         -u admin:password
+         -d "{\"admins\": {\"names\": [\"bbrf\"],\"roles\": []}}"
     ```
-    - `programs`
-    ```javascript
-    function (doc) {
-      if(doc.type == "program")
-      emit(doc._id, 1);
-    }
+
+* Configure the required views via curl:
+    ```bash
+    curl -X PUT https://<your-instance>:6984/bbrf/_design/bbrf \
+         -u admin:password \
+         -H "Content-Type: application/json" \
+         -d @views.json
     ```
-    - `domains_resolved`
-    ```javascript
-    function (doc) {
-      if(doc.type == "domain" && doc.ips.length > 0)
-      emit(doc.program, doc._id);
-    }
-    ```
-    - `domains_unresolved`
-    ```javascript
-    function (doc) {
-      if(doc.type == "domain" && (!doc.hasOwnProperty("ips") || doc.ips.length === 0))
-      emit(doc.program, doc._id);
-    }
-    ```
-    - `alerts`
-    ```javascript
-    function (doc) {
-      if(doc.type == "alert")
-      emit(doc.program, doc.message);
-    }
-    ```
-    - `tasks`
-    ```javascript
-    function (doc) {
-      if(doc.type == "task")
-      emit( doc.name, 1);
-    }
-    ```
+
+#### Via `server-install.sh`
+
+
+Thanks to @plenumlab, you can run the following for an easy out-of-the-box installation of the CouchDB server. Run this on the VPS where you want to install the server. This script requires Docker.
+
+  * `git clone https://github.com/honoki/bbrf-client`
+  * `cd bbrf-client`
+  * `chmod +x server-install.sh`
+  * `./server-install.sh`
 
 ### Client
 
-Now the server is up and running, go ahead and clone this repository.
+Now you have a server up and running, go ahead and clone this repository.
 
   * `git clone https://github.com/honoki/bbrf-client`
   * `cd bbrf-client`
@@ -159,6 +138,7 @@ Usage:
 
 In order to process changes and alerts as they are pushed to the data store, you need to have an active listener running somewhere: `bbrf listen`
 
+This will start listening for changes and push alerts to your configured Slack instance.
 
 ## AWS Lambda
 

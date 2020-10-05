@@ -1,20 +1,28 @@
-{"views": {
-    "domains": {"map": "function (doc) {  if(doc.type == \"domain\")  emit(doc.program, doc._id);}"
+{
+"views": {
+    "domains": {
+      "map": "function (doc) {\n  if(doc.type == \"domain\")\n  emit(doc.program, doc._id);\n}"
     },
     "ips": {
-      "map": "function (doc) {  if(doc.type == \"ip\")  emit(doc.program, doc._id);}"
+      "map": "function (doc) {\n  if(doc.type == \"ip\")\n  emit(doc.program, doc._id);\n}"
     },
     "programs": {
-      "map": "function (doc) {  if(doc.type == \"program\")  emit(doc._id, 1);}"
+      "map": "function (doc) {\n  if(doc.type == \"program\")\n  emit(doc._id, 1);\n}"
     },
     "domains_resolved": {
-      "map": "function (doc) {  if(doc.type == \"domain\" && doc.ips.length > 0)  emit(doc.program, doc._id);}"
+      "map": "function (doc) {\n  if(doc.type == \"domain\" && doc.ips.length > 0)\n  emit(doc.program, doc._id);\n}"
     },
     "domains_unresolved": {
-      "map": "function (doc) {  if(doc.type == \"domain\" && (!doc.hasOwnProperty(\"ips\") || doc.ips.length == 0))  emit(doc.program, doc._id);}"
+      "map": "function (doc) {\n  if(doc.type == \"domain\" && (!doc.hasOwnProperty(\"ips\") || doc.ips.length === 0))\n  emit(doc.program, doc._id);\n}"
+    },
+    "taskexecutions": {
+      "map": "function (doc) {\n  if(doc.type == \"taskexecution\")\n  emit([doc.program, doc.task, doc.timestamp], doc.output);\n}"
     },
     "alerts": {
-      "map": "function (doc) {  if(doc.type == \"alert\")  emit(doc.program, doc.message);}"
+      "map": "function (doc) {\n  if(doc.type == \"alert\")\n  emit(doc.program, doc.message);\n}"
+    },
+    "tasks": {
+      "map": "function (doc) {\n  if(doc.type == \"task\")\n  emit( doc.name, 1);\n}"
     }
   }
 }
