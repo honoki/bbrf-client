@@ -175,6 +175,7 @@ class BBRFClient:
         for domain in domains:
             blacklisted_ip = False
             ips = []
+            domain = domain.lower()
             
             if ':' in domain:
                 # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
