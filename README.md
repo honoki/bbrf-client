@@ -26,10 +26,10 @@ bbrf domains
 
 ## Installation
 
-### Setting up locally
+### Setting up using setup script
 
   * `git clone https://github.com/honoki/bbrf-client`
-  * `cd bbrf-client/init`
+  * `cd bbrf-client`
   * `chmod +x init.sh`
   * `./init.sh`
 
