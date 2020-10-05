@@ -65,6 +65,6 @@ read -p 'Slack Token: ' slack
 echo -e "{\n\"username\": \"$user\",\n \"password\": \"$upass\",\n\"couchdb\": \"$url/bbrf\",\n \"slack_token\": \"$slack\"\n}" >> ~/.bbrf/config.json
 echo "Default config file created ~/.bbrf/config.json"
 
-echo -e "function bbrf4() {\nsource $PWD/.env/bin/activate; \npython $PWD/bbrf.py \"\$@\" \ndeactivate \n}\n">> ~/.bash_profile
+echo -e "function bbrf() {\nsource $PWD/.env/bin/activate; \npython $PWD/bbrf.py \"\$@\" \ndeactivate \n}\n">> ~/.bash_profile
 source ~/.bash_profile
 echo "All done ./bbrf"
