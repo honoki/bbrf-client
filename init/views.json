@@ -1,0 +1,20 @@
+{"views": {
+    "domains": {"map": "function (doc) {  if(doc.type == \"domain\")  emit(doc.program, doc._id);}"
+    },
+    "ips": {
+      "map": "function (doc) {  if(doc.type == \"ip\")  emit(doc.program, doc._id);}"
+    },
+    "programs": {
+      "map": "function (doc) {  if(doc.type == \"program\")  emit(doc._id, 1);}"
+    },
+    "domains_resolved": {
+      "map": "function (doc) {  if(doc.type == \"domain\" && doc.ips.length > 0)  emit(doc.program, doc._id);}"
+    },
+    "domains_unresolved": {
+      "map": "function (doc) {  if(doc.type == \"domain\" && (!doc.hasOwnProperty(\"ips\") || doc.ips.length == 0))  emit(doc.program, doc._id);}"
+    },
+    "alerts": {
+      "map": "function (doc) {  if(doc.type == \"alert\")  emit(doc.program, doc.message);}"
+    }
+  }
+}
