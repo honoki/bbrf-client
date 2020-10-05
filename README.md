@@ -32,7 +32,7 @@ bbrf domains
   * `cd bbrf-client`
   * `chmod +x init.sh`
   * `./init.sh`
-
+Follow the instructions it will prompt you for couchdb installation
 ### CouchDB server 
 
 To use the bbrf client, makes sure you set up the bbrf server first. The tool was built to work with the document-based database [CouchDB](couchdb.apache.org). Below is a suggested way of deploying, but YMMV.
