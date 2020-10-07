@@ -43,7 +43,12 @@ To use the bbrf client, make sure you set up the bbrf server first. The tool was
 * Create the `bbrf` user (additional documentation [here](https://docs.couchdb.org/en/stable/intro/security.html)) via curl:
 
     ```bash
-    curl -X PUT https://<your-instance>:6984/_users/org.couchdb.user:bbrf \
+    COUCHDB=https://<yourinstance>:6984/
+    
+    curl -X PUT $COUCHDB"_users" \
+         -u admin:password
+         
+    curl -X PUT curl -X PUT $COUCHDB"/_users/org.couchdb.user:bbrf" \
          -u admin:password \
          -H "Accept: application/json" \
          -H "Content-Type: application/json" \
@@ -53,20 +58,20 @@ To use the bbrf client, make sure you set up the bbrf server first. The tool was
 * Create a new database called `bbrf`:
 
     ```bash
-    curl -X PUT https://<your-instance>:6984/bbrf \
+    curl -X PUT $COUCHDB"bbrf" \
          -u admin:password
     ```
 
 * Grant access rights to the new database:
     ```bash
-    curl -X PUT https://<your-instance>:6984/bbrf/_security \
-         -u admin:password
+    curl -X PUT $COUCHDB"bbrf/_security" \
+         -u admin:password \
          -d "{\"admins\": {\"names\": [\"bbrf\"],\"roles\": []}}"
     ```
 
 * Configure the required views via curl:
     ```bash
-    curl -X PUT https://<your-instance>:6984/bbrf/_design/bbrf \
+    curl -X PUT $COUCHDB"bbrf/_design/bbrf" \
          -u admin:password \
          -H "Content-Type: application/json" \
          -d @views.json
@@ -134,6 +139,21 @@ Usage:
   bbrf --version
 ```
 
+### Examples
+
+Create and configure a new program with a defined scope:
+
+[![asciicast](https://asciinema.org/a/6GWe0GxUnFhTmPIqzh97iA6g5.png)](https://asciinema.org/a/6GWe0GxUnFhTmPIqzh97iA6g5)
+
+When adding domains to your database, note that `bbrf` will automatically remove duplicates and check against the defined scope.
+
+[![asciicast](https://asciinema.org/a/SxDNPfB7QDa1Q9etSEFhSoe28.png)](https://asciinema.org/a/SxDNPfB7QDa1Q9etSEFhSoe28)
+
+Integrate with recon tools you already know and love:
+
+[![asciicast](https://asciinema.org/a/ItX9xMdTuUm02G40rNNN4YUFz.png)](https://asciinema.org/a/ItX9xMdTuUm02G40rNNN4YUFz)
+
+
 ### Listener
 
 In order to process changes and alerts as they are pushed to the data store, you need to have an active listener running somewhere: `bbrf listen`
@@ -178,7 +198,7 @@ Serverless: Removing old service artifacts from S3...
 Serverless: Run the "serverless" command to setup monitoring, troubleshooting and testing.
 ```
 
-Now interact with the client via the Lambda API Gateway as follows:
+Now you can interact with the client via the Lambda API Gateway as follows:
 
 ```
 > curl https://[redacted].execute-api.us-east-1.amazonaws.com/dev/bbrf -d 'task=domains -p vzm'

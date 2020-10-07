@@ -7,7 +7,7 @@
       "map": "function (doc) {\n  if(doc.type == \"ip\")\n  emit(doc.program, doc._id);\n}"
     },
     "programs": {
-      "map": "function (doc) {\n  if(doc.type == \"program\")\n  emit(doc._id, 1);\n}"
+      "map": "function (doc) {\n  if(doc.type == \"program\" && !doc.disabled)\n  emit(doc._id, 1);\n}"
     },
     "domains_resolved": {
       "map": "function (doc) {\n  if(doc.type == \"domain\" && doc.ips.length > 0)\n  emit(doc.program, doc._id);\n}"

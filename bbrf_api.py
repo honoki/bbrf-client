@@ -267,16 +267,23 @@ class BBRFApi:
                 if prop not in original_document:
                     print('[Warning] The update specifies a key that does not exist: '+prop)
                     original_document[prop] = []  # initiate the property list if it doesn't exist
-                elif not type(original_document[prop]) is list:
-                    print('The updated key is not a list. Cannot append data to '+prop)
+                elif not type(original_document[prop]) is type(updates[prop]):
+                    print('The updated key does not have the right type. Cannot update data of '+prop)
                     continue
-                for val in updates[prop]:
-                    if val not in original_document[prop]:
-                        document_changed = True
-                        original_document[prop].append(val)
+                # if it's a list, append
+                if type(original_document[prop]) is list:
+                    for val in updates[prop]:         
+                        if val not in original_document[prop]:
+                            document_changed = True
+                            original_document[prop].append(val)
+                    # filter out empty values
+                    original_document[prop] = list(filter(None, original_document[prop]))
+                # if it's a scalar, replace
+                elif isinstance(original_document[prop], str) or isinstance(original_document[prop], bool):
+                    document_changed = True
+                    original_document[prop] = updates[prop]
                         
-                # filter out empty values
-                original_document[prop] = list(filter(None, original_document[prop]))
+               
             
             if document_changed:
                 r = self.requests_session.put(

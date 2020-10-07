@@ -3,7 +3,7 @@
 """BBRF Client
 
 Usage:
-  bbrf (new|use) <program> [--disabled --passive-only]
+  bbrf (new|use|disable) <program> [--disabled --passive-only]
   bbrf program (list|active|scope [--wildcard [--top]] [-p <program>])
   bbrf domains [--view <view>] [-p <program> --all]
   bbrf domain (add|remove|update) ( - | <domain>...) [-p <program>] [-s <source>]
@@ -33,11 +33,17 @@ import re
 from multiprocessing import Pool
 
 CONFIG_FILE = '~/.bbrf/config.json'
+# Thanks https://regexr.com/3au3g
+REGEX_DOMAIN = re.compile('^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
+# regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
+REGEX_IP = re.compile('^([0-9]{1,3}\.){3}[0-9]{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))?$')
 
 class BBRFClient:
     config = {}
     arguments = None
     api = None
+    
+   
     
     def __init__(self, arguments, config=None):
         
@@ -163,9 +169,6 @@ class BBRFClient:
     If a line includes a : delimiter, strip off the ips and add them to the database
     '''
     def add_domains(self, domains):
-        # Thanks https://regexr.com/3au3g
-        regex = re.compile('^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
-        
         (inscope, outscope) = self.api.get_program_scope(self.get_program())
         add_domains = {}
         
@@ -178,15 +181,13 @@ class BBRFClient:
             domain = domain.lower()
             
             if ':' in domain:
-                # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
-                ip4regex = re.compile('^([0-9]{1,3}\.){3}[0-9]{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))?$')
                 domain, ips = domain.split(':')
                 ips = ips.split(',')
                 
                 for ip in ips:
                     if ip in blacklist:
                         blacklisted_ip = True
-                    if not ip4regex.match(ip):
+                    if not REGEX_IP.match(ip):
                         ips.remove(ip)
                     
             
@@ -201,7 +202,7 @@ class BBRFClient:
                 domain = domain[2:]
                 # if it matches the existing scope definition,
                 # add this wildcard to the scope too
-                if regex.match(domain) and not self.matches_scope(domain, outscope) and self.matches_scope(domain, inscope):
+                if REGEX_DOMAIN.match(domain) and not self.matches_scope(domain, outscope) and self.matches_scope(domain, inscope):
                     self.add_inscope(['*.'+domain])
             
             # Avoid adding blacklisted domains or
@@ -209,7 +210,7 @@ class BBRFClient:
             if blacklisted_ip or domain in blacklist:
                 continue
             # It must match the format of a domain name
-            if not regex.match(domain):
+            if not REGEX_DOMAIN.match(domain):
                 continue
             # It may not be explicitly outscoped
             if self.matches_scope(domain, outscope):
@@ -238,10 +239,16 @@ class BBRFClient:
         for domain in domains:
             
             ips = []
+            domain = domain.lower()
+            
             # split ips if provided
             if ':' in domain:
                 domain, ips = domain.split(':')
                 ips = ips.split(',')
+                
+                for ip in ips:
+                    if not REGEX_IP.match(ip):
+                        ips.remove(ip)
                 
             # housekeeping
             if domain.endswith('.'):
@@ -253,9 +260,6 @@ class BBRFClient:
             p.starmap(self.api.update_document, [("domain", x, update_domains[x]) for x in update_domains.keys()])
     
     def add_ips(self, ips):
-        # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
-        regex = re.compile('^([0-9]{1,3}\.){3}[0-9]{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))?$')
-        
         add_ips = {}
         
         # Keep a copy of the blacklist for reference
@@ -270,7 +274,9 @@ class BBRFClient:
                 ip, domains = ip.split(':')
                 domains = domains.split(',')
                 
-#                for domain in domains:
+                for domain in domains:
+                    if not REGEX_DOMAIN.match(domain):
+                        domains.remove(domain)
 #                    if domain in blacklist:
 #                        blacklisted_domain = True
             
@@ -278,7 +284,7 @@ class BBRFClient:
                 continue
             if ip in blacklist:
                 continue
-            if not regex.match(ip):
+            if not REGEX_IP.match(ip):
                 continue
            
             add_ips[ip] = domains
@@ -307,11 +313,19 @@ class BBRFClient:
             for domain in domains:
                 if domain.endswith('.'):
                     domain = domain[:-1]
+                if not REGEX_DOMAIN.match(domain):
+                    domains.remove(domain)
                 
             update_ips[ip] = {"domains": domains}
             
         with Pool(40) as p:
             p.starmap(self.api.update_document, [("ip", x, update_ips[x]) for x in update_ips.keys()])
+            
+    def disable_program(self, program):
+        if program not in self.list_programs():
+            raise Exception('The specified program does not exist.')
+        self.api.update_document("program", program, {"disabled":True})
+        
             
     def add_inscope(self, elements):
         (inscope, outscope) = self.api.get_program_scope(self.get_program())
@@ -409,6 +423,9 @@ class BBRFClient:
 
         if self.arguments['use']:
             self.use_program()
+            
+        if self.arguments['disable']:
+            self.disable_program(self.arguments['<program>'])
 
         if self.arguments['program']:
             if self.arguments['list']:
