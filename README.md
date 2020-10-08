@@ -2,6 +2,8 @@
 
 The client component of the Bug Bounty Reconnaissance Framework (BBRF) is intended to facilitate the workflows of security researchers across multiple devices.
 
+Read the blog post: https://honoki.net/2020/10/08/introducing-bbrf-yet-another-bug-bounty-reconnaissance-framework/
+
 The primary function of the client is providing easy access to information that is stored in a centralized BBRF document store. For example, to quickly create and initialize a new program with a couple of domains, you can try:
 
 ```bash
@@ -152,6 +154,20 @@ When adding domains to your database, note that `bbrf` will automatically remove
 Integrate with recon tools you already know and love:
 
 [![asciicast](https://asciinema.org/a/ItX9xMdTuUm02G40rNNN4YUFz.png)](https://asciinema.org/a/ItX9xMdTuUm02G40rNNN4YUFz)
+
+Resolve domains with [`massdns`](https://github.com/blechschmidt/massdns), format with `awk`, and save results with `bbrf`:
+
+```bash
+bbrf domains --view unresolved | \
+    massdns -t A -o Snlqr -r resolvers.txt | \
+    # reformat output to put query and response on the same line for grepping
+    awk -v FS="\n" -v RS="\n\n" '{print $1";"$2}' | \
+    # pipe output to multiple greps
+    tee \
+      >(grep ' A ' | awk -F' ' '{print $4":"$7}' | bbrf domain update -) \
+      >(grep ' A ' | awk -F' ' '{print $7":"$4}' | bbrf ip add - -s massdns) \
+      >(grep ' A ' | awk -F' ' '{print $7":"$4}' | bbrf ip update -);
+```
 
 
 ### Listener
