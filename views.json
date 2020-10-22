@@ -23,6 +23,15 @@
     },
     "tasks": {
       "map": "function (doc) {\n  if(doc.type == \"task\")\n  emit( doc.name, 1);\n}"
+    },
+     "urls_by_domain": {
+      "map": "function (doc) {\n  if (doc.type == \"domain\" && doc.urls.length > 0)\n    for(var i=0; i<doc.urls.length; i++)\n      emit(doc._id, doc.urls[i]);\n}"
+    },
+    "urls_by_program": {
+      "map": "function (doc) {\n  if (doc.type == \"domain\" && doc.urls.length > 0)\n    for(var i=0; i<doc.urls.length; i++)\n      emit(doc.program, doc.urls[i]);\n}"
+    },
+    "scope": {
+      "map": "function (doc) {\n  if(doc.type == \"program\") {\n    if(doc.inscope.length > 0) {\n      doc.inscope.forEach(function(scope) {\n        emit([!doc.disabled, \"IN\", scope], doc._id)\n      });\n    }\n    if(doc.outscope.length > 0) {\n      doc.outscope.forEach(function(scope) {\n        emit([!doc.disabled, \"OUT\", scope], doc._id)\n      });\n    }\n  }\n  \n}"
     }
   }
 }

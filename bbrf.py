@@ -4,13 +4,15 @@
 
 Usage:
   bbrf (new|use|disable) <program> [--disabled --passive-only]
-  bbrf program (list|active|scope [--wildcard [--top]] [-p <program>])
+  bbrf program (list|active)
   bbrf domains [--view <view>] [-p <program> --all]
   bbrf domain (add|remove|update) ( - | <domain>...) [-p <program>] [-s <source>]
   bbrf ips [--view <view>] [--filter-cdns] [-p <program> | --all]
   bbrf ip (add|remove|update) ( - | <ip>...) [-p <program>] [-s <source>]
-  bbrf ports (add|remove) ( - | <service>...) [-p <program>]
-  bbrf (inscope|outscope) (add|remove) ([-] | <element>...) [-p <program>]
+  bbrf scope (in|out) [(--wildcard [--top])] ([-p <program>] | (--all [--disabled]))
+  bbrf (inscope|outscope) (add|remove) (- | <element>...) [-p <program>]
+  bbrf url add ( - | <url>...) [-d <domain>] [-s <source>] --show-new
+  bbrf urls (-d <domain> | -p <program> | --all)  
   bbrf blacklist (add|remove) ( - | <element>...) [-p <program>]
   bbrf task (list|(add|remove) <task>)
   bbrf run <task> [-p <program>]
@@ -122,29 +124,38 @@ class BBRFClient:
         else:
             raise Exception('You need to select a program to execute this action.')
  
-    def get_program_scope(self):
+    def get_scope(self):   
+        if not self.arguments['--all']:
+            if self.arguments['in']:
+                (scope, _) = self.api.get_program_scope(self.get_program())
+            elif self.arguments['out']:
+                (_, scope) = self.api.get_program_scope(self.get_program())
+        else: # get scope across all programs, making use of _view/scope
+            if self.arguments['in']:
+                scope = self.api.get_scope('in', 'active' if not self.arguments['--disabled'] else 'inactive')
+            if self.arguments['out']:
+                scope = self.api.get_scope('out', 'active' if not self.arguments['--disabled'] else 'inactive')
         
-        (inscope, _) = self.api.get_program_scope(self.get_program())
         if(self.arguments['--wildcard']):
-            scope = []
-            for s in inscope:
+            r_scope = []
+            for s in scope:
                 if s.startswith('*.'):
-                    scope.append(s[2:])
+                    r_scope.append(s[2:])
             # only return top-level scope,
             # i.e. 
             if(self.arguments['--top']):
-                all_scope = scope[:]  # make a copy of the scope before editing it
+                all_scope = r_scope[:]  # make a copy of the scope before editing it
                 for s in all_scope:  # run through each of the wildcard domains
-                    for t in scope: # and compare to our limited scope copy
+                    for t in r_scope: # and compare to our limited scope copy
                         if s != t and t.endswith(s):
-                            scope.remove(t)
+                            r_scope.remove(t)
                         elif s != t and s.endswith(t):
-                            if s in scope:
-                                scope.remove(s)
-                
-            return scope
+                            if s in r_scope:
+                                r_scope.remove(s)
+
+            return r_scope
         else:
-            return inscope
+            return scope
             
     '''
     List all domains in the current program.
@@ -435,7 +446,7 @@ class BBRFClient:
                 return self.get_program()
 
             if self.arguments['scope']:
-                return "\n".join(self.get_program_scope())
+                return "\n".join(self.get_scope())
 
         if self.arguments['domains']:
             if self.arguments['<view>']:
@@ -555,6 +566,15 @@ class BBRFClient:
             elif self.arguments['-']:
                 for line in sys.stdin:
                     self.api.create_alert(line, self.get_program(), self.arguments['-s'])
+                    
+        if self.arguments['scope']:
+            return "\n".join(self.get_scope())
+            
+            # move this to self.get_scope()
+            if self.arguments['in']:
+                return "\n".join(self.api.get_scope('in', 'active' if not self.arguments['--disabled'] else 'inactive'))
+            if self.arguments['out']:
+                return "\n".join(self.api.get_scope('out', 'active' if not self.arguments['--disabled'] else 'inactive'))
 
         try:
             self.save_config()

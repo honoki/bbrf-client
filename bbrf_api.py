@@ -395,3 +395,41 @@ class BBRFApi:
         r = self.requests_session.post(self.BBRF_API, json.dumps(alert), headers={"Content-Type": "application/json", "Authorization": self.auth})
         if 'error' in r.json():
             raise Exception(r.json()['error'])
+        
+    '''
+    List scopes across programs using _view/scope - does not support filtering by program.
+    To get scope for one program, use `bbrf program scope`.
+    '''
+    def get_scope(self, in_out="in", active_inactive="active"):
+        
+        r  = None
+        
+        # list inscope of active programs
+        if in_out == "in" and active_inactive == "active":
+            r = self.requests_session.get(
+                self.BBRF_API+'/_design/bbrf/_view/scope?startkey=[true,"IN"]&endkey=[true,"INZZZ"]',
+                headers={"Authorization": self.auth}
+            )
+        
+        # list inscope of inactive programs
+        if in_out == "in" and active_inactive == "inactive":
+            r = self.requests_session.get(
+                self.BBRF_API+'/_design/bbrf/_view/scope?startkey=[false,"IN"]&endkey=[false,"INZZZ"]',
+                headers={"Authorization": self.auth}
+            )
+            
+        # list outscope of active programs
+        if in_out == "out" and active_inactive == "active":
+            r = self.requests_session.get(
+                self.BBRF_API+'/_design/bbrf/_view/scope?startkey=[true,"OUT"]&endkey=[true,"OUTZZZ"]',
+                headers={"Authorization": self.auth}
+            )
+            
+        # list outscope of inactive programs
+        if in_out == "out" and active_inactive == "inactive":
+            r = self.requests_session.get(
+                self.BBRF_API+'/_design/bbrf/_view/scope?startkey=[false,"OUT"]&endkey=[false,"OUTZZZ"]',
+                headers={"Authorization": self.auth}
+            )
+        
+        return [r['key'][2] for r in r.json()['rows']]
