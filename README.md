@@ -174,9 +174,9 @@ bbrf domains --view unresolved | \
 
 #### URLs
 
-Pipe a list of URLs to `bbrf`, or add them as arguments as follows:
+BBRF will help you manage your URLs, and store their hostname, port, status code and content length for you:
 
-```
+```bash
 bbrf url add 'https://www.example.com:8443/a' 'http://www.example.com/b' 'http://www.example.com/c 200 1234'
 ```
 
@@ -185,6 +185,31 @@ Two formats are accepted: `<url>` or `<url> <statuscode> <contentlength>` delimi
 The `<url>` can be absolute or relative. A relative URL will require the `-d <hostname>` flag to be specified or will be skipped. Whenever the `-d` flag is set, it will compare that with the hostname parsed from the URL, and skip the URL if they do not match.
 
 Relative URLs and URLs that do not specify a scheme (`http://` or `https://`) will always be interpreted with scheme `http://`. If no port is found, ports 80 and 443 will be used as a default depending on the scheme.
+
+The flag `--show-new` will print a list of new and updated URLs if they were added, or if their status code and/or content length were updated respectively:
+
+```bash
+cat urls.txt | bbrf url add - --show-new
+[UPDATED] https://sub.example.com:8443/b
+[NEW] http://www.example.com/a
+[NEW] http://www.example.com/c
+```
+
+To view a list of stored URLs of your active program, simply use:
+
+```
+bbrf urls
+``` 
+
+Or, to return URLs belonging to a specific host:
+
+```
+bbrf urls -d www.example.com
+``` 
+
+To list URLs across all programs, run:
+
+`bbrf urls --all`
 
 ### Listener
 
