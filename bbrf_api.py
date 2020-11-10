@@ -264,7 +264,6 @@ class BBRFApi:
         if 'error' in r.json() and r.json()['error'] != 'not_found':
             raise Exception(r.json()['error'])
         elif 'error' in r.json() and r.json()['error'] == 'not_found':
-            print("here3")
             return
         if 'type' in r.json() and not r.json()['type'] == doctype:
             raise Exception('The specified document (type: '+r.json()['type']+') is not of the requested type '+doctype)
@@ -338,6 +337,103 @@ class BBRFApi:
                     raise Exception(r.json()['error'])
                 
                 return document
+            
+            
+    '''
+    Update documents in bulk
+    The provided batch_updates need to be a dict of updates mapping the id to the dict of updates
+    '''
+    def update_documents(self, doctype, batch_updates):
+
+        # first, get the latest revisions of each of the listed documents
+        r = self.requests_session.post(self.BBRF_API+'/_all_docs?include_docs=true', json.dumps({'keys': [x for x in batch_updates.keys()]}), headers={"Authorization": self.auth, 'Content-Type': 'application/json'})
+        
+        current = {a['key']: a['doc'] for a in r.json()['rows'] if 'doc' in a and a['doc']}
+        updates = {x['key']: batch_updates[x['key']].update({'_id': x['key'], '_rev':x['value']['rev']}) or batch_updates[x['key']] for x in r.json()['rows'] if 'doc' in x and x['doc']}
+        
+        to_be_updated = []
+        
+        for x in current.keys():
+            if not self.docs_are_equal(current[x], updates[x]):
+                to_be_updated.append(updates[x])
+        
+        # TODO:
+        # check current doctype against document.type
+        for updates in to_be_updated:
+            original_document = current[updates['_id']]
+            
+            if not original_document['type'] == doctype:
+                print('[Error] The document type of document '+updates['_id']+' is not '+doctype)
+                updates = {}
+                continue
+            
+            # first ensure that all original properties are copied, so an update does not result in lost data!
+            for prop in original_document.keys():
+                if not prop in updates:
+                    updates[prop] = original_document[prop]
+            
+            # now start changing what needs to be changed
+            for prop in updates.keys():
+                if prop not in original_document:
+                    pass # this is fine, will happen e.g. when adding a status code or content_length for the first time
+                else:
+                    if not type(original_document[prop]) is type(updates[prop]):
+                        print('[Error] The updated property '+prop+' doesn\'t have the right type. Cannot update '+updates['_id'])
+                        updates = {}
+                        continue
+                    # if it's a list, make sure the update values are appended to the existing fields
+                    if type(original_document[prop]) is list:
+                        new_list = original_document[prop]
+                        for val in updates[prop]:
+                            if val not in new_list:
+                                new_list.append(val)
+
+                        # filter out empty values
+                        updates[prop] = list(filter(None, new_list))
+        
+        # now bulk update all documents with changes!
+        r = self.requests_session.post(
+            self.BBRF_API+'/_bulk_docs',
+            json.dumps({'docs': to_be_updated}),
+            headers={"Authorization": self.auth, 'Content-Type': 'application/json'}
+        )
+        if 'error' in r.json():
+            raise Exception(r.json()['error'])
+            
+        return [x['_id'] for x in to_be_updated]
+        
+    '''
+    return true if docs are identical, false if there are differences
+    '''
+    def docs_are_equal(self, current, updated, ignore = ['_id', '_rev', 'program', 'type'], check_lists = True):
+        
+        current = {k: current[k] for k in current if k not in ignore}
+        updated = {k: updated[k] for k in updated if k not in ignore}
+        
+        if current == updated:
+            return True
+        
+        # if documents are not equal and check_lists is set, we will also consider
+        # documents equal if the elements of the update list are already in the current list
+        if check_lists:
+            current_nolists = {k: current[k] for k in current if k not in ignore and not type(current[k]) is list}
+            updated_nolists = {k: updated[k] for k in updated if k not in ignore and not type(updated[k]) is list}
+            
+            # if even without the lists they are still different, don't bother to check the lists
+            if not current_nolists == updated_nolists:
+                return False
+            else:
+                update_lists = {k: updated[k] for k in updated if k not in ignore and type(updated[k]) is list}
+                for lst in update_lists:
+                    for l in update_lists[lst]:
+                        if not l in current[lst]:
+                            return False
+                
+                return True
+        
+        return False
+        
+        
                 
     '''
     Inspired by https://github.com/dpavlin/angular-mojolicious/edit/master/couchdb-changes.pl

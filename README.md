@@ -209,7 +209,9 @@ bbrf urls -d www.example.com
 
 To list URLs across all programs, run:
 
-`bbrf urls --all`
+```
+bbrf urls --all
+```
 
 ### Listener
 

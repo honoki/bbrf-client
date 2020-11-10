@@ -6,12 +6,12 @@ Usage:
   bbrf (new|use|disable|enable) <program>
   bbrf program (list [--show-disabled] | active)
   bbrf domains [--view <view> (-p <program> | --all)]
-  bbrf domain (add|remove|update) ( - | <domain>...) [-p <program> -s <source>]
+  bbrf domain (add|remove|update) ( - | <domain>...) [-p <program> -s <source> --show-new]
   bbrf ips [--view <view> --filter-cdns (-p <program> | --all)]
-  bbrf ip (add|remove|update) ( - | <ip>...) [-p <program> -s <source>]
+  bbrf ip (add|remove|update) ( - | <ip>...) [-p <program> -s <source> --show-new]
   bbrf scope (in|out) [(--wildcard [--top])] ([-p <program>] | (--all [--show-disabled]))
   bbrf (inscope|outscope) (add|remove) (- | <element>...) [-p <program>]
-  bbrf url add ( - | <url>...) [-d <hostname> -s <source> --show-new -p <program>]
+  bbrf url add ( - | <url>...) [-d <hostname> -s <source> -p <program> --show-new]
   bbrf urls (-d <hostname> | [-p <program>] | --all)  
   bbrf blacklist (add|remove) ( - | <element>...) [-p <program>]
   bbrf task (list|(add|remove) <task>)
@@ -35,7 +35,6 @@ import sys
 import json
 from bbrf_api import BBRFApi
 import re
-from multiprocessing import Pool
 from urllib.parse import urlparse
 
 CONFIG_FILE = '~/.bbrf/config.json'
@@ -227,16 +226,22 @@ class BBRFClient:
                 continue
             add_domains[domain] = ips
             
-        self.api.add_documents('domain', add_domains, self.get_program(), source=self.arguments['-s'])
+        success, _ = self.api.add_documents('domain', add_domains, self.get_program(), source=self.arguments['-s'])
         
+        if self.arguments['--show-new']:
+            return ["[NEW] "+x for x in success if x]
     
     '''
     This is now balanced over 100 concurrent threads in order to drastically
     improve the throughput of these requests.
     '''
     def remove_domains(self, domains):
-        with Pool(40) as p:
-            p.starmap(self.api.remove_document, [("domain", x) for x in domains])
+        
+        remove = {domain: {'_deleted': True} for domain in domains}
+        removed = self.api.update_documents('domain', remove)
+        
+        if self.arguments['--show-new']:
+            return ["[DELETED] "+x for x in removed if x] 
 
     '''
     Update properties of a domain
@@ -264,8 +269,10 @@ class BBRFClient:
                 
             update_domains[domain] = {"ips": ips}
         
-        with Pool(40) as p:
-            p.starmap(self.api.update_document, [("domain", x, update_domains[x]) for x in update_domains.keys()])
+        updated = self.api.update_documents('domain', {domain: update_domains[domain] for domain in update_domains.keys()})
+        
+        if self.arguments['--show-new']:
+            return [ "[UPDATED] "+x for x in updated if x]
     
     def add_ips(self, ips):
         add_ips = {}
@@ -297,11 +304,18 @@ class BBRFClient:
            
             add_ips[ip] = domains
 
-        self.api.add_documents('ip', add_ips, self.get_program(), source=self.arguments['-s'])
+        success, _ = self.api.add_documents('ip', add_ips, self.get_program(), source=self.arguments['-s'])
+        
+        if self.arguments['--show-new']:
+            return ["[NEW] "+x for x in success if x]
         
     def remove_ips(self, ips):
-        with Pool(100) as p:
-            p.starmap(self.api.remove_document, [("ip", x) for x in ips])
+
+        remove = {ip: {'_deleted': True} for ip in ips}
+        removed = self.api.update_documents('ip', remove)
+        
+        if self.arguments['--show-new']:
+            return ["[DELETED] "+x for x in removed if x] 
             
     '''
     Update properties of an IP
@@ -327,8 +341,10 @@ class BBRFClient:
                 
             update_ips[ip] = {"domains": updated_domains}
             
-        with Pool(40) as p:
-            p.starmap(self.api.update_document, [("ip", x, update_ips[x]) for x in update_ips.keys()])
+        updated = self.api.update_documents('ip', {ip: update_ips[ip] for ip in update_ips.keys()})
+        
+        if self.arguments['--show-new']:
+            return [ "[UPDATED] "+x for x in updated if x]
     
     '''
     The BBRF client is responsible for ensuring the added urls are added to the appropriate hostname (domain or IP),
@@ -371,6 +387,7 @@ class BBRFClient:
             # parse properties of the URL
             u = urlparse(url)
             port = u.port
+            query = u.query if not u.query == "" else None
             
             # Usually we parse the hostname from the URL,
             # but we don't need to if a hostname is explicitly set
@@ -401,6 +418,8 @@ class BBRFClient:
             if url.startswith('//'):
                 url = 'http:' + url
                 port = 80
+            if '?' in url:
+                url = url.split('?')[0]
                 
             # It must match the format of a domain name or an IP address
             if not REGEX_DOMAIN.match(hostname) and not REGEX_IP.match(hostname):
@@ -420,29 +439,34 @@ class BBRFClient:
                     port = 80
                 if u.scheme == 'https':
                     port = 443
-                        
-            if len(parts) == 1: # only a url
-                add_urls[url] = {
-                    "hostname": hostname,
-                    "port": int(port)
-                }
-                    
-            elif len(parts) == 3: # url, status code and content length
-                add_urls[url] = {
-                    "hostname": hostname,
-                    "port": int(port),
-                    "status": int(parts[1]),
-                    "content_length": int(parts[2])
-                }
+            
+            if url in add_urls and query not in add_urls[url]['query']:
+                add_urls[url]['query'].append(query)
+            else:
+                if len(parts) == 1: # only a url
+                    if not url in add_urls:
+                        add_urls[url] = {
+                            "hostname": hostname,
+                            "port": int(port),
+                            "query": [query] if query else []
+                        }
+
+                elif len(parts) == 3: # url, status code and content length
+                    add_urls[url] = {
+                        "hostname": hostname,
+                        "port": int(port),
+                        "status": int(parts[1]),
+                        "content_length": int(parts[2]),
+                        "query": [query] if query else []
+                    }
         
         success, failed = self.api.add_documents('url', add_urls, self.get_program(), source=self.arguments['-s'])
         
-        # retry failed with update
-        with Pool(40) as p:
-            updated = p.starmap(self.api.update_document, [('url', url, add_urls[url]) for url in add_urls.keys() if url in failed])
+        # assuming the failed updates were the result of duplicates, try bulk updating the url that failed
+        updated = self.api.update_documents('url', {url: add_urls[url] for url in failed})
             
         if self.arguments['--show-new']:
-            return [ "[UPDATED] "+x for x in updated if x] + ["[NEW] "+x for x in success]
+            return [ "[UPDATED] "+x for x in updated if x] + ["[NEW] "+x for x in success if x]
     
     def disable_program(self, program):
         if program not in self.list_programs(True):
@@ -587,9 +611,9 @@ class BBRFClient:
         if self.arguments['domain']:
             if self.arguments['add']:
                 if self.arguments['<domain>']:
-                    self.add_domains(self.arguments['<domain>'])
+                    return self.add_domains(self.arguments['<domain>'])
                 elif self.arguments['-']:
-                    self.add_domains(sys.stdin.read().split('\n'))
+                    return self.add_domains(sys.stdin.read().split('\n'))
             if self.arguments['remove']:
                 if self.arguments['<domain>']:
                     self.remove_domains(self.arguments['<domain>'])
@@ -597,9 +621,9 @@ class BBRFClient:
                     self.remove_domains(sys.stdin.read().split('\n'))
             if self.arguments['update']:
                 if self.arguments['<domain>']:
-                    self.update_domains(self.arguments['<domain>'])
+                    return self.update_domains(self.arguments['<domain>'])
                 elif self.arguments['-']:
-                    self.update_domains(sys.stdin.read().split('\n'))
+                    return self.update_domains(sys.stdin.read().split('\n'))
 
         if self.arguments['ips']:
             if self.arguments['--filter-cdns']:
@@ -623,9 +647,9 @@ class BBRFClient:
         if self.arguments['ip']:
             if self.arguments['add']:
                 if self.arguments['<ip>']:
-                    self.add_ips(self.arguments['<ip>'])
+                    return self.add_ips(self.arguments['<ip>'])
                 elif self.arguments['-']:
-                    self.add_ips(sys.stdin.read().split('\n'))
+                    return self.add_ips(sys.stdin.read().split('\n'))
             if self.arguments['remove']:
                 if self.arguments['<ip>']:
                     self.remove_ips(self.arguments['<ip>'])
@@ -633,9 +657,9 @@ class BBRFClient:
                     self.remove_ips(sys.stdin.read().split('\n'))
             if self.arguments['update']:
                 if self.arguments['<ip>']:
-                    self.update_ips(self.arguments['<ip>'])
+                    return self.update_ips(self.arguments['<ip>'])
                 elif self.arguments['-']:
-                    self.update_ips(sys.stdin.read().split('\n'))
+                    return self.update_ips(sys.stdin.read().split('\n'))
 
         if self.arguments['inscope']:
             if self.arguments['add']:
