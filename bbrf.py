@@ -3,16 +3,16 @@
 """BBRF Client
 
 Usage:
-  bbrf (new|use|disable) <program> [--disabled --passive-only]
-  bbrf program (list|active)
-  bbrf domains [--view <view>] [-p <program> --all]
-  bbrf domain (add|remove|update) ( - | <domain>...) [-p <program>] [-s <source>]
-  bbrf ips [--view <view>] [--filter-cdns] [-p <program> | --all]
-  bbrf ip (add|remove|update) ( - | <ip>...) [-p <program>] [-s <source>]
-  bbrf scope (in|out) [(--wildcard [--top])] ([-p <program>] | (--all [--disabled]))
+  bbrf (new|use|disable|enable) <program>
+  bbrf program (list [--show-disabled] | active)
+  bbrf domains [--view <view> (-p <program> | --all)]
+  bbrf domain (add|remove|update) ( - | <domain>...) [-p <program> -s <source>]
+  bbrf ips [--view <view> --filter-cdns (-p <program> | --all)]
+  bbrf ip (add|remove|update) ( - | <ip>...) [-p <program> -s <source>]
+  bbrf scope (in|out) [(--wildcard [--top])] ([-p <program>] | (--all [--show-disabled]))
   bbrf (inscope|outscope) (add|remove) (- | <element>...) [-p <program>]
-  bbrf url add ( - | <url>...) [-d <domain>] [-s <source>] --show-new
-  bbrf urls (-d <domain> | -p <program> | --all)  
+  bbrf url add ( - | <url>...) [-d <hostname> -s <source> --show-new -p <program>]
+  bbrf urls (-d <hostname> | [-p <program>] | --all)  
   bbrf blacklist (add|remove) ( - | <element>...) [-p <program>]
   bbrf task (list|(add|remove) <task>)
   bbrf run <task> [-p <program>]
@@ -25,6 +25,9 @@ Options:
   -p <program>  Select a program to limit the command to. Not required when the command "use" has been run before.
   -s <source>   Provide an optional source string to store information about the source of the modified data.
   -v --version  Show the program version
+  -d <hostname> Explicitly specify the hostname of a URL in case of relative paths
+  --show-new    Print new unique values that were added to the database, and didn't already exist
+  --all         Specify to get information across all programs. Incompatible with the -p flag
 """
 from docopt import docopt
 import os
@@ -33,6 +36,7 @@ import json
 from bbrf_api import BBRFApi
 import re
 from multiprocessing import Pool
+from urllib.parse import urlparse
 
 CONFIG_FILE = '~/.bbrf/config.json'
 # Thanks https://regexr.com/3au3g
@@ -44,8 +48,6 @@ class BBRFClient:
     config = {}
     arguments = None
     api = None
-    
-   
     
     def __init__(self, arguments, config=None):
         
@@ -76,8 +78,8 @@ class BBRFClient:
         # and add it to the db
         self.api.create_new_program(self.get_program())
 
-    def list_programs(self):
-        return self.api.get_programs()
+    def list_programs(self, show_disabled):
+        return self.api.get_programs(show_disabled)
     
     def list_tasks(self):
         return [r['key'] for r in self.api.get_tasks()]
@@ -88,7 +90,7 @@ class BBRFClient:
     '''
     def use_program(self, check_exists=True):
         pro = self.arguments['<program>']
-        if check_exists and pro not in self.list_programs():
+        if check_exists and pro not in self.list_programs(True):
             raise Exception('This program does not exist.')
         self.config['program'] = self.arguments['<program>']
     
@@ -132,10 +134,11 @@ class BBRFClient:
                 (_, scope) = self.api.get_program_scope(self.get_program())
         else: # get scope across all programs, making use of _view/scope
             if self.arguments['in']:
-                scope = self.api.get_scope('in', 'active' if not self.arguments['--disabled'] else 'inactive')
+                scope = self.api.get_scope('in', 'active' if not self.arguments['--show-disabled'] else 'inactive')
             if self.arguments['out']:
-                scope = self.api.get_scope('out', 'active' if not self.arguments['--disabled'] else 'inactive')
+                scope = self.api.get_scope('out', 'active' if not self.arguments['--show-disabled'] else 'inactive')
         
+        # filter the scope if --wildcard and/or --top flags are set
         if(self.arguments['--wildcard']):
             r_scope = []
             for s in scope:
@@ -157,14 +160,7 @@ class BBRFClient:
         else:
             return scope
             
-    '''
-    List all domains in the current program.
-    '''
-    def list_domains(self, all_programs = False):
-        if all_programs:
-            return self.aip.get_domains_across_programs()
-        return self.api.get_domains_by_program_name(self.get_program())
-    
+   
     '''
     The BBRF client is responsible for ensuring the added domain is not explicitly outscoped,
     and conforms to the expected format of a domain.
@@ -232,6 +228,7 @@ class BBRFClient:
             add_domains[domain] = ips
             
         self.api.add_documents('domain', add_domains, self.get_program(), source=self.arguments['-s'])
+        
     
     '''
     This is now balanced over 100 concurrent threads in order to drastically
@@ -300,7 +297,7 @@ class BBRFClient:
            
             add_ips[ip] = domains
 
-        self.api.add_documents('ip', add_ips, self.get_program())
+        self.api.add_documents('ip', add_ips, self.get_program(), source=self.arguments['-s'])
         
     def remove_ips(self, ips):
         with Pool(100) as p:
@@ -321,21 +318,141 @@ class BBRFClient:
                 domains = domains.split(',')
                 
             # housekeeping
+            updated_domains = []
             for domain in domains:
                 if domain.endswith('.'):
                     domain = domain[:-1]
-                if not REGEX_DOMAIN.match(domain):
-                    domains.remove(domain)
+                if REGEX_DOMAIN.match(domain):
+                    updated_domains.append(domain)
                 
-            update_ips[ip] = {"domains": domains}
+            update_ips[ip] = {"domains": updated_domains}
             
         with Pool(40) as p:
             p.starmap(self.api.update_document, [("ip", x, update_ips[x]) for x in update_ips.keys()])
+    
+    '''
+    The BBRF client is responsible for ensuring the added urls are added to the appropriate hostname (domain or IP),
+    unless a hostname is explicitly provided.
+    
+    If spaces are found, the input will be split in three parts: path, status code and response size, and the tool will 
+    store those as part of the url.
+    
+    Expected format:
+        urls = [
+         "http://a.example.com:8080/test",
+         "//b.example.com/example",
+         "/robots.txt",
+         "/page 200 9209",
+         "http://hostname.com/page 401 170"
+        ]
             
+    The database stores urls as individual documents with:
+     - identifier (url)
+     - status
+     - content_length
+     - hostname (referencing a domain)
+     - program
+     
+    '''
+    def add_urls(self, urls):
+        
+        (inscope, outscope) = self.api.get_program_scope(self.get_program())
+        add_urls = {}
+        
+        for url in urls:
+            parts = url.split(' ')
+            url = parts[0]
+            
+            # To support urls without a schema that aren't relative URLS
+            # e.g. '    www.example.com', add a leading protocol 
+            if not url.startswith('http://') and not url.startswith('https://') and not url.startswith('/'):
+                url = 'http://'+url
+                
+            # parse properties of the URL
+            u = urlparse(url)
+            port = u.port
+            
+            # Usually we parse the hostname from the URL,
+            # but we don't need to if a hostname is explicitly set
+            if not self.arguments['-d']:
+                hostname = u.hostname
+            else:
+                hostname = self.arguments['-d']
+                                          
+            # It's still possible hostname is empty, e.g. for
+            # bbrf url add '/relative' without a -d hostname set;
+            # We can't process relative URLS without understanding,
+            # so need to skip those for now. Better ideas wecome!
+            if not hostname:
+                print("Hostname could not be parsed, skipping "+url)
+                continue
+            
+            # If the provided hostname in -d does not match the parsed hostname,
+            # we won't add it to avoid polluting the dataset
+            if u.hostname and not u.hostname == hostname:
+                print("Provided hostname "+hostname+" did not match parsed hostname "+u.hostname+", skipping...")
+                continue
+                
+            # If the provided URL is relative, we need to rewrite the URL
+            # with the provided hostname, and we will ALWAYS assume http port 80
+            if not u.netloc:
+                url = 'http://' + hostname + url
+                port = 80
+            if url.startswith('//'):
+                url = 'http:' + url
+                port = 80
+                
+            # It must match the format of a domain name or an IP address
+            if not REGEX_DOMAIN.match(hostname) and not REGEX_IP.match(hostname):
+                print("Illegal hostname:",hostname)
+                continue
+            # It may not be explicitly outscoped
+            if self.matches_scope(hostname, outscope):
+                print("skipping outscoped hostname:",hostname)
+                continue
+            # It must match the in scope
+            if not self.matches_scope(hostname, inscope):
+                print("skipping not inscope hostname:",hostname)
+                continue
+            
+            if not port:
+                if u.scheme == 'http':
+                    port = 80
+                if u.scheme == 'https':
+                    port = 443
+                        
+            if len(parts) == 1: # only a url
+                add_urls[url] = {
+                    "hostname": hostname,
+                    "port": int(port)
+                }
+                    
+            elif len(parts) == 3: # url, status code and content length
+                add_urls[url] = {
+                    "hostname": hostname,
+                    "port": int(port),
+                    "status": int(parts[1]),
+                    "content_length": int(parts[2])
+                }
+        
+        success, failed = self.api.add_documents('url', add_urls, self.get_program(), source=self.arguments['-s'])
+        
+        # retry failed with update
+        with Pool(40) as p:
+            updated = p.starmap(self.api.update_document, [('url', url, add_urls[url]) for url in add_urls.keys() if url in failed])
+            
+        if self.arguments['--show-new']:
+            return [ "[UPDATED] "+x for x in updated if x] + ["[NEW] "+x for x in success]
+    
     def disable_program(self, program):
-        if program not in self.list_programs():
+        if program not in self.list_programs(True):
             raise Exception('The specified program does not exist.')
         self.api.update_document("program", program, {"disabled":True})
+        
+    def enable_program(self, program):
+        if program not in self.list_programs(True):
+            raise Exception('The specified program does not exist.')
+        self.api.update_document("program", program, {"disabled":False})
         
             
     def add_inscope(self, elements):
@@ -384,6 +501,16 @@ class BBRFClient:
             return self.api.get_domains_by_program_name()
         return self.api.get_domains_by_program_name(self.get_program())
     
+    def list_urls(self, by, key = False):
+        if by == "hostname":
+            return self.api.get_urls_by_hostname(key)
+        elif by == "program":
+            return self.api.get_urls_by_program(key)
+        elif by == "all":
+            return self.api.get_urls_by_program() # An empty key will return all results
+        else:
+            return self.api.get_urls_by_program(self.get_program())
+    
     def list_documents_view(self, doctype, view, list_all = False):
         if list_all:
             return self.api.get_documents_view(None, doctype, view)
@@ -393,7 +520,6 @@ class BBRFClient:
         return self.api.get_program_blacklist(self.get_program())
     
     def add_blacklist(self, elements):
-        
         blacklist = self.get_blacklist()
         
         for e in elements:
@@ -403,7 +529,6 @@ class BBRFClient:
         self.api.update_program_blacklist(self.get_program(), blacklist)
     
     def remove_blacklist(self, elements):
-        
         blacklist = self.get_blacklist()
         
         for e in elements:
@@ -424,6 +549,11 @@ class BBRFClient:
         self.api.listen_for_changes()
 
     def run(self):
+        
+        import pprint
+        pp = pprint.PrettyPrinter(indent=4)
+        #pp.pprint(self.arguments)
+        
         try:
             self.load_config()
         except Exception as err:
@@ -437,22 +567,22 @@ class BBRFClient:
             
         if self.arguments['disable']:
             self.disable_program(self.arguments['<program>'])
+            
+        if self.arguments['enable']:
+            self.enable_program(self.arguments['<program>'])
 
         if self.arguments['program']:
             if self.arguments['list']:
-                return "\n".join(self.list_programs())
+                return self.list_programs(self.arguments['--show-disabled'])
 
             if self.arguments['active']:
                 return self.get_program()
 
-            if self.arguments['scope']:
-                return "\n".join(self.get_scope())
-
         if self.arguments['domains']:
             if self.arguments['<view>']:
-                return "\n".join(self.list_documents_view("domain", self.arguments['<view>'], self.arguments['--all']))
+                return self.list_documents_view("domain", self.arguments['<view>'], self.arguments['--all'])
             else:
-                return "\n".join(self.list_domains(self.arguments['--all']))
+                return self.list_domains(self.arguments['--all'])
 
         if self.arguments['domain']:
             if self.arguments['add']:
@@ -485,10 +615,10 @@ class BBRFClient:
                             break
                     if not cdn:
                         filtered.append(ip)
-                return "\n".join(filtered)
+                return filtered
             if self.arguments['<view>']:
-                return "\n".join(self.list_documents_view("ip", self.arguments['<view>'], self.arguments['--all']))
-            return "\n".join(self.list_ips(self.arguments['--all']))    
+                return self.list_documents_view("ip", self.arguments['<view>'], self.arguments['--all'])
+            return self.list_ips(self.arguments['--all'])
 
         if self.arguments['ip']:
             if self.arguments['add']:
@@ -530,7 +660,24 @@ class BBRFClient:
                     self.remove_outscope(self.arguments['<element>'])
                 elif self.arguments['-']:
                     self.remove_outscope(sys.stdin.read().split('\n'))
-
+                    
+        if self.arguments['url']:
+            if self.arguments['add']:
+                if self.arguments['<url>']:
+                    return self.add_urls(self.arguments['<url>'])
+                if self.arguments['-']:
+                    return self.add_urls([u.rstrip() for u in sys.stdin.read().split('\n')])
+                    
+        if self.arguments['urls']:
+            if self.arguments['-d']:
+                return self.list_urls("hostname",self.arguments['-d'])
+            elif self.arguments['<program>']:
+                return self.list_urls("program",self.arguments['<program>'])
+            elif self.arguments['--all']:
+                return self.list_urls("all")
+            else:
+                return self.list_urls("self")
+            
         if self.arguments['blacklist']:
             if self.arguments['add']:
                 if self.arguments['<element>']:
@@ -545,11 +692,11 @@ class BBRFClient:
                     
         if self.arguments['task']:
             if self.arguments['list']:
-                return "\n".join(self.list_tasks())
+                return self.list_tasks()
             if self.arguments['remove']:
                 return self.api.remove_document('task', {'key': self.arguments['<task>']})
             if self.arguments['add']:
-                return "Not yet implemented..."
+                return "[ERROR] Not yet implemented..."
         
         if self.arguments['run']:
             return self.api.run_task(self.arguments['<task>'], self.get_program())
@@ -568,13 +715,7 @@ class BBRFClient:
                     self.api.create_alert(line, self.get_program(), self.arguments['-s'])
                     
         if self.arguments['scope']:
-            return "\n".join(self.get_scope())
-            
-            # move this to self.get_scope()
-            if self.arguments['in']:
-                return "\n".join(self.api.get_scope('in', 'active' if not self.arguments['--disabled'] else 'inactive'))
-            if self.arguments['out']:
-                return "\n".join(self.api.get_scope('out', 'active' if not self.arguments['--disabled'] else 'inactive'))
+            return self.get_scope()
 
         try:
             self.save_config()
@@ -587,4 +728,7 @@ if __name__ == '__main__':
     bbrf = BBRFClient(arguments)
     result = bbrf.run()
     if result:
-        print(result)
+        if type(result) is list:
+            print("\n".join(result))
+        else:
+            print(result)

@@ -7,7 +7,7 @@ from slackclient import SlackClient
 class BBRFApi:
     BBRF_API = None
     auth = None
-    doctypes = ['ip', 'domain', 'program', 'task']
+    doctypes = ['ip', 'domain', 'program', 'task', 'url']
     sc = None
     
     requests_session = None
@@ -47,6 +47,30 @@ class BBRFApi:
         return [r['value'] for r in r.json()['rows']]
     
     '''
+    Get a list of all urls, filtered by program or hostname if provided.
+    '''
+    def get_urls_by_hostname(self, hostname=None):
+        if hostname:
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/urls_by_hostname?key="'+hostname+'"', headers={"Authorization": self.auth})
+        else:
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/urls_by_hostname', headers={"Authorization": self.auth})
+        if 'error' in r.json():
+            raise Exception(r.json()['error'])
+        # print all url, status, content_length if status and content length are set    
+        return [" ".join([str(x) for x in r['value'] if x]) for r in r.json()['rows']]
+    
+    def get_urls_by_program(self, program=None):
+        if program:
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/urls_by_program?key="'+program+'"', headers={"Authorization": self.auth})
+        else:
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/urls_by_program', headers={"Authorization": self.auth})
+        if 'error' in r.json():
+            raise Exception(r.json()['error'])
+        # print all url, status, content_length if status and content length are set
+        return [" ".join([str(x) for x in r['value'] if x]) for r in r.json()['rows']]
+    
+    
+    '''
     Get all documents of a certain type
     '''
     def get_documents(self, doctype, program_name = None):
@@ -60,7 +84,6 @@ class BBRFApi:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/'+doctype+'s', headers={"Authorization": self.auth})
         if 'error' in r.json():
             raise Exception(r.json()['error'])
-        print(r.json())
         return [r['value'] for r in r.json()['rows']]
     
     '''
@@ -92,11 +115,14 @@ class BBRFApi:
     '''
     Get a list of all programs.
     '''
-    def get_programs(self):
-        r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/programs', headers={"Authorization": self.auth})
+    def get_programs(self, show_disabled=False):
+        if show_disabled:
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/programs', headers={"Authorization": self.auth})
+        else:
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/programs?key=false', headers={"Authorization": self.auth})
         if 'error' in r.json():
             raise Exception(r.json()['error'])
-        return [r['key'] for r in r.json()['rows']]
+        return [r['value'] for r in r.json()['rows']]
     
     def get_program_scope(self, program_name):
         r = self.requests_session.get(self.BBRF_API+'/'+program_name, headers={"Authorization": self.auth})
@@ -180,6 +206,13 @@ class BBRFApi:
                     doc[relname] = list(filter(None,identifiers[docid]))  # filter out the empty values
                 else:
                     doc[relname] = []
+            
+            else:
+                # in order to support urls and general flexibility,
+                # this needs to support arbitrary keys to be added to the JSON document
+                for key in identifiers[docid]:
+                    if key not in ['_rev', '_id']:
+                        doc[key] = identifiers[docid][key]
                 
             if source:
                 doc['source'] = source
@@ -189,9 +222,16 @@ class BBRFApi:
             self.BBRF_API+'/_bulk_docs', json.dumps(bulk),
             headers={"Authorization": self.auth, "Content-Type": "application/json"}
         )
-        if 'error' in r.json():
-            raise Exception(r.json()['error'])
         
+        # return (success,failed) with identifiers of new docs and docs that failed due to conflict
+        return (
+            [doc['id'] for doc in r.json() if 'error' not in doc],
+            [doc['id'] for doc in r.json() if 'error' in doc and doc['error'] == 'conflict']
+        )
+        
+        #if 'error' in r.json():
+        #    raise Exception(r.json()['error'])
+    
     '''
     Get the identifier of a document based on a set of properties defined in propmap
     '''
@@ -238,7 +278,7 @@ class BBRFApi:
     Return a raw version of a document by id
     '''
     def get_document(self, docid):
-        r = self.requests_session.get(self.BBRF_API+'/'+docid, headers={"Authorization": self.auth})
+        r = self.requests_session.get(self.BBRF_API+'/'+requests.utils.quote(docid, safe=''), headers={"Authorization": self.auth})
         if 'error' in r.json() and r.json()['error'] == 'not_found':
             return
         return r.text
@@ -266,8 +306,11 @@ class BBRFApi:
             for prop in updates.keys():
                 if prop not in original_document:
                     print('[Warning] The update specifies a key that does not exist: '+prop)
-                    original_document[prop] = []  # initiate the property list if it doesn't exist
-                elif not type(original_document[prop]) is type(updates[prop]):
+                    if type(updates[prop]) is list:
+                        original_document[prop] = []  # initiate the property list if it doesn't exist
+                    else:
+                        original_document[prop] = None
+                if not type(original_document[prop]) is type(updates[prop]):
                     print('The updated key does not have the right type. Cannot update data of '+prop)
                     continue
                 # if it's a list, append
@@ -278,21 +321,23 @@ class BBRFApi:
                             original_document[prop].append(val)
                     # filter out empty values
                     original_document[prop] = list(filter(None, original_document[prop]))
-                # if it's a scalar, replace
-                elif isinstance(original_document[prop], str) or isinstance(original_document[prop], bool):
-                    document_changed = True
-                    original_document[prop] = updates[prop]
+                # if it's not a list or a dict, replace
+                elif not isinstance(original_document[prop], (list, dict)):
+                    if not original_document[prop] == updates[prop]:
+                        document_changed = True
+                        original_document[prop] = updates[prop]
                         
-               
-            
             if document_changed:
                 r = self.requests_session.put(
                     self.BBRF_API+'/'+requests.utils.quote(document, safe='')+'?rev='+r.json()['_rev'],
                     json.dumps(original_document),
                     headers={"Authorization": self.auth, "Content-Type": "application/json"}
                 )
+                
                 if 'error' in r.json():
                     raise Exception(r.json()['error'])
+                
+                return document
                 
     '''
     Inspired by https://github.com/dpavlin/angular-mojolicious/edit/master/couchdb-changes.pl

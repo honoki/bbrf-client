@@ -126,19 +126,22 @@ Create a file `~/.bbrf/config.json` with the required configuration:
 
 ```
 Usage:
-  bbrf (new|use) <program> [--disabled --passive-only]
-  bbrf program (list|active|scope [--wildcard [--top]] [-p <program>])
-  bbrf domains [--view <view>] [-p <program> --all]
-  bbrf domain (add|remove|update) ([-] | <domain>...) [-p <program>] [-s <source>]
-  bbrf ips [--view <view>] [-p <program> | --all]
-  bbrf ip (add|remove|update) ([-] | <ip>...) [-p <program>] [-s <source>]
-  bbrf (inscope|outscope) (add|remove) ([-] | <element>...) [-p <program>]
-  bbrf blacklist (add|remove) ([-] | <element>...) [-p <program>]
+  bbrf (new|use|disable|enable) <program>
+  bbrf program (list [--show-disabled] | active)
+  bbrf domains [--view <view> (-p <program> | --all)]
+  bbrf domain (add|remove|update) ( - | <domain>...) [-p <program> -s <source>]
+  bbrf ips [--view <view> --filter-cdns (-p <program> | --all)]
+  bbrf ip (add|remove|update) ( - | <ip>...) [-p <program> -s <source>]
+  bbrf scope (in|out) [(--wildcard [--top])] ([-p <program>] | (--all [--show-disabled]))
+  bbrf (inscope|outscope) (add|remove) (- | <element>...) [-p <program>]
+  bbrf url add ( - | <url>...) [-d <hostname> -s <source> --show-new -p <program>]
+  bbrf urls (-d <hostname> | [-p <program>] | --all)  
+  bbrf blacklist (add|remove) ( - | <element>...) [-p <program>]
+  bbrf task (list|(add|remove) <task>)
   bbrf run <task> [-p <program>]
   bbrf show <document>
   bbrf listen
-  bbrf alert <message> [-s <source>]
-  bbrf --version
+  bbrf alert ( - | <message>) [-s <source>]
 ```
 
 ### Examples
@@ -169,6 +172,19 @@ bbrf domains --view unresolved | \
       >(grep ' A ' | awk -F' ' '{print $7":"$4}' | bbrf ip update -);
 ```
 
+#### URLs
+
+Pipe a list of URLs to `bbrf`, or add them as arguments as follows:
+
+```
+bbrf url add 'https://www.example.com:8443/a' 'http://www.example.com/b' 'http://www.example.com/c 200 1234'
+```
+
+Two formats are accepted: `<url>` or `<url> <statuscode> <contentlength>` delimited by spaces.
+
+The `<url>` can be absolute or relative. A relative URL will require the `-d <hostname>` flag to be specified or will be skipped. Whenever the `-d` flag is set, it will compare that with the hostname parsed from the URL, and skip the URL if they do not match.
+
+Relative URLs and URLs that do not specify a scheme (`http://` or `https://`) will always be interpreted with scheme `http://`. If no port is found, ports 80 and 443 will be used as a default depending on the scheme.
 
 ### Listener
 
