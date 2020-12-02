@@ -29,13 +29,14 @@ Options:
   --show-new    Print new unique values that were added to the database, and didn't already exist
   --all         Specify to get information across all programs. Incompatible with the -p flag
 """
-from docopt import docopt
+
 import os
 import sys
 import json
-from bbrf_api import BBRFApi
 import re
+from bbrf_api import BBRFApi
 from urllib.parse import urlparse
+from docopt import docopt
 
 CONFIG_FILE = '~/.bbrf/config.json'
 # Thanks https://regexr.com/3au3g

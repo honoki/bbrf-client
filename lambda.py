@@ -24,9 +24,16 @@ def endpoint(event, context):
         }
     )
     output = bbrf.run()
-
-    return {"statusCode": 200, "body": output}
+    
+    response = {
+        "statusCode": 200,
+        "headers": {},
+        "body": json.dumps(output),
+        "isBase64Encoded": False
+    }
+    
+    return response
 
 
 if __name__ == '__main__':
-    print(endpoint(json.loads('{"body": "task=domains -p example"}'), {}))
+    print(endpoint(json.loads('{"body": "task=program list"}'), {}))
