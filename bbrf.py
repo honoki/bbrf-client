@@ -178,6 +178,7 @@ class BBRFClient:
     def add_domains(self, domains):
         (inscope, outscope) = self.api.get_program_scope(self.get_program())
         add_domains = {}
+        add_inscope = []
         
         # Keep a copy of the blacklist for reference
         blacklist = self.get_blacklist()
@@ -188,6 +189,7 @@ class BBRFClient:
             domain = domain.lower()
             
             if ':' in domain:
+                print("nope")
                 domain, ips = domain.split(':')
                 ips = ips.split(',')
                 
@@ -210,7 +212,7 @@ class BBRFClient:
                 # if it matches the existing scope definition,
                 # add this wildcard to the scope too
                 if REGEX_DOMAIN.match(domain) and not self.matches_scope(domain, outscope) and self.matches_scope(domain, inscope):
-                    self.add_inscope(['*.'+domain])
+                    add_inscope.append('*.'+domain)
             
             # Avoid adding blacklisted domains or
             # domains that resolve to blacklisted ips
@@ -226,7 +228,11 @@ class BBRFClient:
             if not self.matches_scope(domain, inscope):
                 continue
             add_domains[domain] = ips
-            
+        
+        # add all new scope at once to drastically reduce runtime of large input
+        if len(add_inscope) > 0:
+            self.add_inscope(add_inscope)
+        
         success, _ = self.api.add_documents('domain', add_domains, self.get_program(), source=self.arguments['-s'])
         
         if self.arguments['--show-new']:
