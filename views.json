@@ -1,19 +1,24 @@
 {
 "views": {
     "domains": {
-      "map": "function (doc) {\n  if(doc.type == \"domain\")\n  emit(doc.program, doc._id);\n}"
+      "map": "function (doc) {\n  if(doc.type == \"domain\")\n  emit(doc.program, doc._id);\n}",
+      "reduce": "_count"
     },
     "ips": {
-      "map": "function (doc) {\n  if(doc.type == \"ip\")\n  emit(doc.program, doc._id);\n}"
+      "map": "function (doc) {\n  if(doc.type == \"ip\")\n  emit(doc.program, doc._id);\n}",
+      "reduce": "_count"
     },
     "programs": {
-      "map": "function (doc) {\n  if(doc.type == \"program\")\n  emit(doc.disabled, doc._id, 1);\n}"
+      "map": "function (doc) {\n  if(doc.type == \"program\")\n  emit(doc.disabled, doc._id, 1);\n}",
+      "reduce": "_count"
     },
     "domains_resolved": {
-      "map": "function (doc) {\n  if(doc.type == \"domain\" && doc.ips.length > 0)\n  emit(doc.program, doc._id);\n}"
+      "map": "function (doc) {\n  if(doc.type == \"domain\" && doc.ips.length > 0)\n  emit(doc.program, doc._id);\n}",
+      "reduce": "_count"
     },
     "domains_unresolved": {
-      "map": "function (doc) {\n  if(doc.type == \"domain\" && (!doc.hasOwnProperty(\"ips\") || doc.ips.length === 0))\n  emit(doc.program, doc._id);\n}"
+      "map": "function (doc) {\n  if(doc.type == \"domain\" && (!doc.hasOwnProperty(\"ips\") || doc.ips.length === 0))\n  emit(doc.program, doc._id);\n}",
+      "reduce": "_count"
     },
     "taskexecutions": {
       "map": "function (doc) {\n  if(doc.type == \"taskexecution\")\n  emit([doc.program, doc.task, doc.timestamp], doc.output);\n}"
@@ -25,13 +30,16 @@
       "map": "function (doc) {\n  if(doc.type == \"task\")\n  emit( doc.name, 1);\n}"
     },
     "urls_by_program": {
-      "map": "function (doc) {\n  if (doc.type == \"url\")\n      emit(doc.program, [doc._id, doc.status, doc.content_length])\n}"
+      "map": "function (doc) {\n  if (doc.type == \"url\")\n      emit(doc.program, [doc._id, doc.status, doc.content_length])\n}",
+      "reduce": "_count"
     },
     "urls_by_hostname": {
-      "map": "function (doc) {\n  if (doc.type == \"url\")\n      emit(doc.hostname, [doc._id, doc.status, doc.content_length])\n}"
+      "map": "function (doc) {\n  if (doc.type == \"url\")\n      emit(doc.hostname, [doc._id, doc.status, doc.content_length])\n}",
+      "reduce": "_count"
     },
     "urls_by_port": {
-      "map": "function (doc) {\n  if (doc.type == \"url\")\n      emit(doc.port, [doc._id, doc.status, doc.content_length])\n}"
+      "map": "function (doc) {\n  if (doc.type == \"url\")\n      emit(doc.port, [doc._id, doc.status, doc.content_length])\n}",
+      "reduce": "_count"
     },
     "scope": {
       "map": "function (doc) {\n  if(doc.type == \"program\") {\n    if(doc.inscope.length > 0) {\n      doc.inscope.forEach(function(scope) {\n        emit([!doc.disabled, \"IN\", scope], doc._id)\n      });\n    }\n    if(doc.outscope.length > 0) {\n      doc.outscope.forEach(function(scope) {\n        emit([!doc.disabled, \"OUT\", scope], doc._id)\n      });\n    }\n  }\n  \n}"

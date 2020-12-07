@@ -39,9 +39,9 @@ class BBRFApi:
     '''
     def get_domains_by_program_name(self, program_name=None):
         if program_name:
-            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/domains?key="'+program_name+'"', headers={"Authorization": self.auth})
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/domains?reduce=false&key="'+program_name+'"', headers={"Authorization": self.auth})
         else:
-            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/domains', headers={"Authorization": self.auth})
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/domains?reduce=false', headers={"Authorization": self.auth})
         if 'error' in r.json():
             raise Exception(r.json()['error'])
         return [r['value'] for r in r.json()['rows']]
@@ -51,9 +51,9 @@ class BBRFApi:
     '''
     def get_urls_by_hostname(self, hostname=None):
         if hostname:
-            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/urls_by_hostname?key="'+hostname+'"', headers={"Authorization": self.auth})
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/urls_by_hostname?reduce=false&key="'+hostname+'"', headers={"Authorization": self.auth})
         else:
-            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/urls_by_hostname', headers={"Authorization": self.auth})
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/urls_by_hostname?reduce=false', headers={"Authorization": self.auth})
         if 'error' in r.json():
             raise Exception(r.json()['error'])
         # print all url, status, content_length if status and content length are set    
@@ -61,9 +61,9 @@ class BBRFApi:
     
     def get_urls_by_program(self, program=None):
         if program:
-            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/urls_by_program?key="'+program+'"', headers={"Authorization": self.auth})
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/urls_by_program?reduce=false&key="'+program+'"', headers={"Authorization": self.auth})
         else:
-            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/urls_by_program', headers={"Authorization": self.auth})
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/urls_by_program?reduce=false', headers={"Authorization": self.auth})
         if 'error' in r.json():
             raise Exception(r.json()['error'])
         # print all url, status, content_length if status and content length are set
@@ -79,9 +79,9 @@ class BBRFApi:
         if doctype is "task":
             return self.get_tasks()
         if program_name:
-            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/'+doctype+'s?key="'+program_name+'"', headers={"Authorization": self.auth})
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/'+doctype+'s?reduce=false&key="'+program_name+'"', headers={"Authorization": self.auth})
         else:
-            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/'+doctype+'s', headers={"Authorization": self.auth})
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/'+doctype+'s?reduce=false', headers={"Authorization": self.auth})
         if 'error' in r.json():
             raise Exception(r.json()['error'])
         return [r['value'] for r in r.json()['rows']]
@@ -93,9 +93,9 @@ class BBRFApi:
         if doctype not in self.doctypes:
             raise Exception('This doctype is not supported')
         if program_name:
-            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/'+doctype+'s_'+view+'?key="'+program_name+'"', headers={"Authorization": self.auth})
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/'+doctype+'s_'+view+'?reduce=false&key="'+program_name+'"', headers={"Authorization": self.auth})
         else:
-            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/'+doctype+'s_'+view, headers={"Authorization": self.auth})
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/'+doctype+'s_'+view+'?reduce=false', headers={"Authorization": self.auth})
         if 'error' in r.json():
             raise Exception(r.json()['error'])
         return [r['value'] for r in r.json()['rows']]
@@ -105,9 +105,9 @@ class BBRFApi:
     '''
     def get_ips_by_program_name(self, program_name=None):
         if program_name:
-            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/ips?key="'+program_name+'"', headers={"Authorization": self.auth})
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/ips?reduce=false&key="'+program_name+'"', headers={"Authorization": self.auth})
         else:
-            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/ips', headers={"Authorization": self.auth})
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/ips?reduce=false', headers={"Authorization": self.auth})
         if 'error' in r.json():
             raise Exception(r.json()['error'])
         return [r['value'] for r in r.json()['rows']]
@@ -117,9 +117,9 @@ class BBRFApi:
     '''
     def get_programs(self, show_disabled=False):
         if show_disabled:
-            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/programs', headers={"Authorization": self.auth})
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/programs?reduce=false', headers={"Authorization": self.auth})
         else:
-            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/programs?key=false', headers={"Authorization": self.auth})
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/programs?reduce=false&key=false', headers={"Authorization": self.auth})
         if 'error' in r.json():
             raise Exception(r.json()['error'])
         return [r['value'] for r in r.json()['rows']]
