@@ -38,7 +38,7 @@ from bbrf_api import BBRFApi
 from urllib.parse import urlparse
 from docopt import docopt
 
-CONFIG_FILE = '~/.bbrf/config-local.json'
+CONFIG_FILE = '~/.bbrf/config.json'
 # Thanks https://regexr.com/3au3g
 REGEX_DOMAIN = re.compile('^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
 # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
