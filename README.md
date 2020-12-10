@@ -41,11 +41,11 @@ To use the bbrf client, make sure you set up the bbrf server first. The tool was
     ```
 * My current setup runs on a `t3a.small` tier in AWS and seems to effortlessly support 116 thousand documents at the time of writing;
 * I strongly suggest enabling (only) https on your server;
-* When up and running, browse to the web interface on `https://<your-instance>:6984/_utils/#/_all_dbs` and check if everything's OK
+* When up and running, browse to the web interface on `https://<your-instance>:5984/_utils/#/_all_dbs` and check if everything's OK
 * Create the `bbrf` user (additional documentation [here](https://docs.couchdb.org/en/stable/intro/security.html)) via curl:
 
     ```bash
-    COUCHDB=https://<yourinstance>:6984/
+    COUCHDB=https://<yourinstance>:5984/
     
     curl -X PUT $COUCHDB"_users" \
          -u admin:password
@@ -117,7 +117,7 @@ Create a file `~/.bbrf/config.json` with the required configuration:
 {
     "username": "bbrf",
     "password": "<your secure password>",
-    "couchdb": "https://<your-instance>:6984/bbrf",
+    "couchdb": "https://<your-instance>:5984/bbrf",
     "slack_token": "<a slack token to receive notifications>"
 }
 ```
