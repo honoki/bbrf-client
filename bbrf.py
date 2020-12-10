@@ -4,7 +4,8 @@
 
 Usage:
   bbrf (new|use|disable|enable) <program>
-  bbrf program (list [--show-disabled] | active)
+  bbrf programs [--show-disabled]
+  bbrf program (list [--show-disabled] | [active])
   bbrf domains [--view <view> (-p <program> | --all)]
   bbrf domain (add|remove|update) ( - | <domain>...) [-p <program> -s <source> --show-new]
   bbrf ips [--view <view> --filter-cdns (-p <program> | --all)]
@@ -14,8 +15,9 @@ Usage:
   bbrf url add ( - | <url>...) [-d <hostname> -s <source> -p <program> --show-new]
   bbrf urls (-d <hostname> | [-p <program>] | --all)  
   bbrf blacklist (add|remove) ( - | <element>...) [-p <program>]
-  bbrf task (list|(add|remove) <task>)
-  bbrf run <task> [-p <program>]
+  bbrf agents
+  bbrf agent ( list | (register | remove) <agent> | gateway [<url>])
+  bbrf run <agent> [-p <program>]
   bbrf show <document>
   bbrf listen
   bbrf alert ( - | <message>) [-s <source>]
@@ -81,8 +83,11 @@ class BBRFClient:
     def list_programs(self, show_disabled):
         return self.api.get_programs(show_disabled)
     
-    def list_tasks(self):
-        return [r['key'] for r in self.api.get_tasks()]
+    def list_agents(self):
+        return [r['key'] for r in self.api.get_agents()]
+    
+    def new_agent(self, agent_name):
+        self.api.create_new_agent(agent_name)
     
     '''
     Specify a program to be used, and avoid having to type -p <name>
@@ -521,6 +526,13 @@ class BBRFClient:
                 outscope.remove(e)
                 
         self.api.update_program_scope(self.get_program(), inscope, outscope)
+        
+    def add_agent(self, agentname):
+        agent = {ip: {'_deleted': True} for ip in ips}
+        removed = self.api.document('agent', agent)
+        
+        if self.arguments['--show-new']:
+            return ["[DELETED] "+x for x in removed if x] 
     
     def list_ips(self, list_all = False):
         if list_all:
@@ -588,7 +600,7 @@ class BBRFClient:
         try:
             self.load_config()
         except Exception as err:
-            pass
+            exit('[ERROR] Could not read config file - make sure it exists and is readable')
 
         if self.arguments['new']:
             self.new_program()
@@ -602,11 +614,13 @@ class BBRFClient:
         if self.arguments['enable']:
             self.enable_program(self.arguments['<program>'])
 
+        if self.arguments['programs']:
+            return self.list_programs(self.arguments['--show-disabled'])
+            
         if self.arguments['program']:
             if self.arguments['list']:
                 return self.list_programs(self.arguments['--show-disabled'])
-
-            if self.arguments['active']:
+            else:
                 return self.get_program()
 
         if self.arguments['domains']:
@@ -720,17 +734,28 @@ class BBRFClient:
                     self.remove_blacklist(self.arguments['<element>'])
                 elif self.arguments['-']:
                     self.remove_blacklist(sys.stdin.read().split('\n'))
-                    
-        if self.arguments['task']:
+        
+        if self.arguments['agents']:
+            return self.list_agents()
+            
+        if self.arguments['agent']:
             if self.arguments['list']:
-                return self.list_tasks()
+                return self.list_agents()
             if self.arguments['remove']:
-                return self.api.remove_document('task', {'key': self.arguments['<task>']})
-            if self.arguments['add']:
-                return "[ERROR] Not yet implemented..."
+                return self.api.remove_document('agent', {'key': self.arguments['<agent>']})
+            if self.arguments['register']:
+                if self.arguments['<agent>'] not in self.list_agents():
+                    return self.new_agent(self.arguments['<agent>'])
+                else:
+                    return 'This agent is already registered'
+            if self.arguments['gateway']:
+                if len(self.arguments['<url>']) > 0:
+                    return self.api.set_agent_gateway(self.arguments['<url>'][0])
+                else:
+                    return json.loads(self.api.get_document('agents_api_gateway')).get('url')
         
         if self.arguments['run']:
-            return self.api.run_task(self.arguments['<task>'], self.get_program())
+            return self.api.run_agent(self.arguments['<agent>'], self.get_program())
         
         if self.arguments['show']:
             return self.api.get_document(self.arguments['<document>'])
@@ -751,7 +776,7 @@ class BBRFClient:
         try:
             self.save_config()
         except Exception as err:
-            pass
+            exit('[ERROR] Could not write to config file - make sure it exists and is writable')
             
             
 if __name__ == '__main__':

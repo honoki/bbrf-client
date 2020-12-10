@@ -7,7 +7,7 @@ from slackclient import SlackClient
 class BBRFApi:
     BBRF_API = None
     auth = None
-    doctypes = ['ip', 'domain', 'program', 'task', 'url']
+    doctypes = ['ip', 'domain', 'program', 'agent', 'url', 'config']
     sc = None
     
     requests_session = None
@@ -76,8 +76,8 @@ class BBRFApi:
     def get_documents(self, doctype, program_name = None):
         if doctype not in self.doctypes:
             raise Exception('This doctype is not supported')
-        if doctype is "task":
-            return self.get_tasks()
+        if doctype == 'agent':
+            return self.get_agents()
         if program_name:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/'+doctype+'s?reduce=false&key="'+program_name+'"', headers={"Authorization": self.auth})
         else:
@@ -162,19 +162,19 @@ class BBRFApi:
             raise Exception(r.json()['error'])
             
     '''
-    Get a list of all tasks.
+    Get a list of all agents.
     '''
-    def get_tasks(self):
-        r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/tasks', headers={"Authorization": self.auth})
+    def get_agents(self):
+        r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/agents', headers={"Authorization": self.auth})
         if 'error' in r.json():
             raise Exception(r.json()['error'])
         return r.json()['rows']
     
     '''
-    Register a new task.
+    Register a new agent.
     '''
-    def register_task(self, name):
-        r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/tasks', headers={"Authorization": self.auth})
+    def register_agent(self, name):
+        r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/agents', headers={"Authorization": self.auth})
         if 'error' in r.json():
             raise Exception(r.json()['error'])
         return [r['key'] for r in r.json()['rows']]
@@ -279,7 +279,7 @@ class BBRFApi:
     def get_document(self, docid):
         r = self.requests_session.get(self.BBRF_API+'/'+requests.utils.quote(docid, safe=''), headers={"Authorization": self.auth})
         if 'error' in r.json() and r.json()['error'] == 'not_found':
-            return
+            return None
         return r.text
         
     '''
@@ -337,8 +337,7 @@ class BBRFApi:
                     raise Exception(r.json()['error'])
                 
                 return document
-            
-            
+        
     '''
     Update documents in bulk
     The provided batch_updates need to be a dict of updates mapping the id to the dict of updates
@@ -433,8 +432,6 @@ class BBRFApi:
         
         return False
         
-        
-                
     '''
     Inspired by https://github.com/dpavlin/angular-mojolicious/edit/master/couchdb-changes.pl
     
@@ -471,7 +468,7 @@ class BBRFApi:
     Handle a batch of changes by sending a Slack notification if it
     concerns a new document.
     
-    @todo trigger a list of tasks when new inscope has been added
+    @todo trigger a list of agents when new inscope has been added
     @todo trigger actions for every new domain
     @todo trigger actions for every new ip
     @todo trigger actions for every new url
@@ -509,17 +506,40 @@ class BBRFApi:
         return error, seq
     
     '''
-    Run a task by triggering the Lambda HTTP endpoint for a task
+    Run an agent by triggering the Lambda HTTP endpoint for an agent
     
     @todo - should the invocation be run asynchronously?
     '''
-    def run_task(self, task_name, program_name):
+    def run_agent(self, agent_name, program_name):
         r = self.requests_session.get(self.BBRF_API+'/agents_api_gateway', headers={"Authorization": self.auth})
         if 'error' in r.json():
             raise Exception(r.json()['error'])
         gateway = r.json()['url']
         
-        return requests.get(gateway+task_name+'?program='+program_name).text
+        return requests.get(gateway+agent_name+'?program='+program_name).text
+    
+    '''
+    Configure the gateway URL
+    '''
+    def set_agent_gateway(self, url):
+        # see if it exists
+        gateway = self.get_document('agents_api_gateway')
+        if gateway:
+            self.update_document('config', 'agents_api_gateway', {'url': url})
+        else:
+            self.requests_session.put(self.BBRF_API+'/agents_api_gateway', json.dumps({'doctype': 'config', 'url': url}), headers={"Authorization": self.auth})
+
+    '''
+    Register a new agent to the database
+    '''
+    def create_new_agent(self, agent_name):
+        if not agent_name:
+            return
+        else:
+            agent = {"type": "agent", "name": agent_name}
+            r = self.requests_session.put(self.BBRF_API+'/agent_'+agent_name, json.dumps(agent), headers={"Authorization": self.auth})
+        if 'error' in r.json():
+            raise Exception(r.json()['error'])
     
     '''
     Push an alert into the DB

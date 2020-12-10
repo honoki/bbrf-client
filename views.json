@@ -26,8 +26,8 @@
     "alerts": {
       "map": "function (doc) {\n  if(doc.type == \"alert\")\n  emit(doc.program, doc.message);\n}"
     },
-    "tasks": {
-      "map": "function (doc) {\n  if(doc.type == \"task\")\n  emit( doc.name, 1);\n}"
+    "agents": {
+      "map": "function (doc) {\n  if(doc.type == \"agent\")\n  emit( doc.name, 1);\n}"
     },
     "urls_by_program": {
       "map": "function (doc) {\n  if (doc.type == \"url\")\n      emit(doc.program, [doc._id, doc.status, doc.content_length])\n}",
