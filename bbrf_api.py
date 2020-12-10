@@ -76,7 +76,7 @@ class BBRFApi:
     def get_documents(self, doctype, program_name = None):
         if doctype not in self.doctypes:
             raise Exception('This doctype is not supported')
-        if doctype is "task":
+        if doctype == "task":
             return self.get_tasks()
         if program_name:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/'+doctype+'s?reduce=false&key="'+program_name+'"', headers={"Authorization": self.auth})
