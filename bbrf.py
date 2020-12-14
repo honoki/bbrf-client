@@ -600,7 +600,7 @@ class BBRFClient:
         try:
             self.load_config()
         except Exception as err:
-            exit('[ERROR] Could not read config file - make sure it exists and is readable')
+            print('[WARNING] Could not read config file - make sure it exists and is readable')
 
         if self.arguments['new']:
             self.new_program()
@@ -776,7 +776,7 @@ class BBRFClient:
         try:
             self.save_config()
         except Exception as err:
-            exit('[ERROR] Could not write to config file - make sure it exists and is writable')
+            print('[WARNING] Could not write to config file - make sure it exists and is writable')
             
             
 if __name__ == '__main__':
