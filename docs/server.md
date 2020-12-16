@@ -6,7 +6,7 @@ For the best results, I recommend you deploy to a VPS so you can interact with t
 
 ## Manual
 
-Skip ahead to [server-install.sh below](#server-install.sh) to try an automated installation of the server. A manual installation requires the following:
+Skip ahead to [server-install.sh below](#server-installsh) to try an automated installation of the server. A manual installation requires the following:
 
 * Deploy the [CouchDB image from Bitnami](https://aws.amazon.com/marketplace/pp/B01M0RA8RQ?ref=cns_srchrow) from the AWS Marketplace or using docker:
     ```bash
