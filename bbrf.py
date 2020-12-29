@@ -13,6 +13,7 @@ Usage:
   bbrf scope (in|out) [(--wildcard [--top])] ([-p <program>] | (--all [--show-disabled]))
   bbrf (inscope|outscope) (add|remove) (- | <element>...) [-p <program>]
   bbrf url add ( - | <url>...) [-d <hostname> -s <source> -p <program> --show-new]
+  bbrf url remove ( - | <url>...)
   bbrf urls (-d <hostname> | [-p <program>] | --all)  
   bbrf blacklist (add|remove) ( - | <element>...) [-p <program>]
   bbrf agents
@@ -479,6 +480,18 @@ class BBRFClient:
             
         if self.arguments['--show-new']:
             return [ "[UPDATED] "+x for x in updated if x] + ["[NEW] "+x for x in success if x]
+        
+    '''
+    Remove URLs
+    '''
+    def remove_urls(self, urls):
+        
+        # parse first comma-seperated value as the url to remove
+        # to support `bbrf urls -d example.com | bbrf url remove -`
+        
+        remove = {url.split(" ")[0]: {'_deleted': True} for url in urls}
+        _ = self.api.update_documents('url', remove)
+        
     
     def disable_program(self, program):
         if program not in self.list_programs(True):
@@ -526,13 +539,6 @@ class BBRFClient:
                 outscope.remove(e)
                 
         self.api.update_program_scope(self.get_program(), inscope, outscope)
-        
-    def add_agent(self, agentname):
-        agent = {ip: {'_deleted': True} for ip in ips}
-        removed = self.api.document('agent', agent)
-        
-        if self.arguments['--show-new']:
-            return ["[DELETED] "+x for x in removed if x] 
     
     def list_ips(self, list_all = False):
         if list_all:
@@ -599,7 +605,7 @@ class BBRFClient:
         
         try:
             self.load_config()
-        except Exception as err:
+        except Exception:
             print('[WARNING] Could not read config file - make sure it exists and is readable')
 
         if self.arguments['new']:
@@ -712,6 +718,11 @@ class BBRFClient:
                     return self.add_urls(self.arguments['<url>'])
                 if self.arguments['-']:
                     return self.add_urls([u.rstrip() for u in sys.stdin.read().split('\n')])
+            if self.arguments['remove']:
+                if self.arguments['<url>']:
+                    return self.remove_urls(self.arguments['<url>'])
+                if self.arguments['-']:
+                    return self.remove_urls([u.rstrip() for u in sys.stdin.read().split('\n')])
                     
         if self.arguments['urls']:
             if self.arguments['-d']:
@@ -775,7 +786,7 @@ class BBRFClient:
 
         try:
             self.save_config()
-        except Exception as err:
+        except Exception:
             print('[WARNING] Could not write to config file - make sure it exists and is writable')
             
             

@@ -52,6 +52,13 @@ Skip ahead to [server-install.sh below](#server-installsh) to try an automated i
          -H "Content-Type: application/json" \
          -d @views.json
     ```
+    
+* Allow CORS requests from https://bbrf.me to use the dashboard:
+    ```bash
+    curl -X PUT $COUCHDB"_node/_local/_config/cors/origins" \
+         -u admin:password \
+         -d '"https://bbrf.me"'
+    ```
 
 ## server-install.sh
 

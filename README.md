@@ -41,3 +41,9 @@ bbrf domains
 If you like looking at your data in another way than via a terminal window, you can make use of the bbrf dashboard on https://bbrf.me. Just plug in your server URL, username and password, and the dashboard will pull your data and make it searchable. Note that all communication to the server happens via your browser, so your data remains safe!
 
 [![asciicast](docs/bbrf-dashboard.gif)](https://bbrf.me/)
+
+If you're having CORS-related issues, make sure the origin `https://bbrf.me` is explicitly allowed in your database configuration:
+
+```bash
+curl -X PUT $COUCHDB"_node/_local/_config/cors/origins" -u admin:password -d '"https://bbrf.me"'
+```
