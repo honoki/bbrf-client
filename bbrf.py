@@ -73,7 +73,7 @@ class BBRFClient:
         elif 'slack_token' not in self.config:
             exit('[ERROR] Required configuration was not found: slack_token')
         else:
-            self.api = BBRFApi(self.config['couchdb'], self.config['username'], self.config['password'], self.config['slack_token'])
+            self.api = BBRFApi(self.config['couchdb'], self.config['username'], self.config['password'], self.config['slack_token'], self.config['slack_username'], self.config['slack_channel'])
 
     def new_program(self):
         # First set the program as the active one

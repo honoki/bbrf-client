@@ -12,12 +12,15 @@ class BBRFApi:
     
     requests_session = None
     
-    def __init__(self, couchdb_url, user, pwd, slack_token):
+    def __init__(self, couchdb_url, user, pwd, slack_token, slack_username="bbrf-bot", slack_channel="bbrf"):
         auth = user+':'+pwd
         self.auth = 'Basic '+base64.b64encode(auth.encode('utf-8')).decode('utf-8')
         self.requests_session = requests.Session()
         if slack_token:
             self.sc = SlackClient(slack_token)
+
+        self.slack_username = slack_username
+        self.slack_channel = slack_channel
         self.BBRF_API = couchdb_url
     
     '''
@@ -501,7 +504,7 @@ class BBRFApi:
                         message += change['doc']['message']
         
         if message:
-            print(self.sc.api_call('chat.postMessage', channel='bbrf', text=message, username='bbrf-bot'))
+            print(self.sc.api_call('chat.postMessage', channel=self.slack_channel, text=message, username=self.slack_username))
         
         return error, seq
     
