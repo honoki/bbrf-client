@@ -27,9 +27,14 @@ select choice in "${choices[@]}"; do
                                         curl -sSL https://raw.githubusercontent.com/bitnami/bitnami-docker-couchdb/master/docker-compose.yml > docker-compose.yml
 										echo "Replacing default password and removing ports 9100,4369"
 										adminpass=$(openssl rand -base64 32)
-										sed -i "s|=couchdb|=$adminpass|g" docker-compose.yml
-										sed -i "s|- '4369:4369'||g" docker-compose.yml
-										sed -i "s|- '9100:9100'||g" docker-compose.yml
+										
+										# Check if script is ran on MacOs, if so: use extra single quotes in SED command.
+										if [[ "$OSTYPE" == "darwin"* ]]; then MACOS="''"; fi
+										
+										sed -i $MACOS "s|=couchdb|=$adminpass|g" docker-compose.yml
+										sed -i $MACOS "s|- '4369:4369'||g" docker-compose.yml
+										sed -i $MACOS "s|- '9100:9100'||g" docker-compose.yml
+										echo "Your administrator username is admin"
 										echo "Your administrator password is $adminpass"
                                         docker-compose up -d
                                         sleep 1
@@ -57,7 +62,7 @@ read -p 'Password (leave blank to generate a strong one): ' upass
 [ -z "$upass" ] && upass=$(openssl rand -base64 32) && echo "Password for low-privilege user is: $upass"
 
 echo "Creating the low-privilege user..."
-curl -u $admin:$passwd -X PUT $url/_users/org.couchdb.user:bbrf \
+curl -u $admin:$passwd -X PUT $url/_users/org.couchdb.user:$user \
      -H "Accept: application/json" \
      -H "Content-Type: application/json" \
      -d "{\"name\": \"$user\", \"password\": \"$upass\", \"roles\": [], \"type\": \"user\"}"
@@ -70,7 +75,7 @@ curl -u $user:$upass -X PUT $url/bbrf/_design/bbrf -d @views.json
 
 
 
-echo -e "\nDefault config file should be created under ~/.bbrf/config.json :\n"
+echo -e "\nCreate a (default) config file under ~/.bbrf/config.json :\n"
 echo -e "{\n\"username\": \"$user\",\n \"password\": \"$upass\",\n\"couchdb\": \"$url/bbrf\",\n \"slack_token\": \"$slack\"\n}" 
 
 
