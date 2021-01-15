@@ -182,7 +182,7 @@ class BBRFApi:
     '''
     Add a list of documents to a program in bulk.
     '''
-    def add_documents(self, doctype, identifiers, program_name, source=None):
+    def add_documents(self, doctype, identifiers, program_name, source=None, tags=[]):
         if doctype not in self.doctypes:
             raise Exception('This doctype is not supported')
         # Create documents in bulk
@@ -216,6 +216,11 @@ class BBRFApi:
                 
             if source:
                 doc['source'] = source
+                
+            if tags:
+                tag_map = {x.split(':', 1)[0]: x.split(':', 1)[1] for x in tags}
+                doc['tags'] = tag_map
+                
             bulk['docs'].append(doc)
         
         r = self.requests_session.post(
@@ -389,6 +394,17 @@ class BBRFApi:
 
                         # filter out empty values
                         updates[prop] = list(filter(None, new_list))
+                        
+                    # if it's a dict, make sure the update values are added to the existing map
+                    # for example, this is the case when updating tags of a document
+                    if type(original_document[prop]) is dict:
+                        new_dict = original_document[prop]
+                        for key in updates[prop]:
+                            new_dict[key] = updates[prop][key]
+                        
+                        # filter out empty values
+                        updates[prop] = {x: new_dict[x] for x in new_dict if new_dict[x] and len(new_dict[x]) > 0}
+                                
         
         # now bulk update all documents with changes!
         r = self.requests_session.post(
@@ -594,3 +610,47 @@ class BBRFApi:
             )
         
         return [r['key'][2] for r in r.json()['rows']]
+    
+    '''
+    Get a list of documents based on a search term by tags, filtered by doctype
+    '''
+    def search_tags(self, key, value, doctype = None, program = None):
+        if doctype and doctype not in self.doctypes:
+            raise Exception('This doctype is not supported')
+        r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/search_tags?key=["'+key+'", "'+value+'"]', headers={"Authorization": self.auth})
+        if 'error' in r.json():
+            raise Exception(r.json()['error'])
+            
+        results = r.json()['rows']
+        
+        # filter results based on the doctype and program name
+        if(doctype):
+            results = [x for x in results if x['value'][0] == doctype]
+        if(program):
+            results = [x for x in results if x['value'][2] == program]
+        
+        return [x['value'][1] for x in results]
+    
+
+    '''
+    Get a list of documents based on a search term by tags, filtered by doctype
+    '''
+    def search_tags_between(self, key, value, before_after, doctype = None, program = None):
+        if doctype and doctype not in self.doctypes:
+            raise Exception('This doctype is not supported')
+        if before_after == 'before':
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/search_tags?startkey=["'+key+'"]&endkey=["'+key+'","'+value+'"]', headers={"Authorization": self.auth})
+        elif before_after == 'after':
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/search_tags?startkey=["'+key+'","'+value+'"]&endkey=["'+key+'ZZZZZ"]&', headers={"Authorization": self.auth})
+        if 'error' in r.json():
+            raise Exception(r.json()['error'])
+            
+        results = r.json()['rows']
+        
+        # filter results based on the doctype and program name
+        if(doctype):
+            results = [x for x in results if x['value'][0] == doctype]
+        if(program):
+            results = [x for x in results if x['value'][2] == program]
+        
+        return [x['value'][1] for x in results]

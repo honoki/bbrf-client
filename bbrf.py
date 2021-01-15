@@ -3,18 +3,21 @@
 """BBRF Client
 
 Usage:
-  bbrf (new|use|disable|enable) <program>
+  bbrf (new|use|disable|enable) <program> [ -t <tag>... ]
   bbrf programs [--show-disabled]
   bbrf program (list [--show-disabled] | [active])
   bbrf domains [--view <view> (-p <program> | --all)]
-  bbrf domain (add|remove|update) ( - | <domain>...) [-p <program> -s <source> --show-new]
-  bbrf ips [--view <view> --filter-cdns (-p <program> | --all)]
-  bbrf ip (add|remove|update) ( - | <ip>...) [-p <program> -s <source> --show-new]
+  bbrf domains where <tag_name> is [before | after] <value> [(-p <program> | --all)]
+  bbrf domain (add|remove|update) ( - | <domain>...) [-p <program> -s <source> --show-new -t <tag>...]
+  bbrf ips [ --filter-cdns (-p <program> | --all)]
+  bbrf ips where <tag_name> is [before | after] <value> [(-p <program> | --all)]
+  bbrf ip (add|remove|update) ( - | <ip>...) [-p <program> -s <source> --show-new -t <tag>...]
   bbrf scope (in|out) [(--wildcard [--top])] ([-p <program>] | (--all [--show-disabled]))
   bbrf (inscope|outscope) (add|remove) (- | <element>...) [-p <program>]
-  bbrf url add ( - | <url>...) [-d <hostname> -s <source> -p <program> --show-new]
+  bbrf urls (-d <hostname> | [-p <program>] | --all)
+  bbrf urls where <tag_name> is [before | after] <value> [(-p <program> | --all)]
+  bbrf url add ( - | <url>...) [-d <hostname> -s <source> -p <program> --show-new -t <tag>...]
   bbrf url remove ( - | <url>...)
-  bbrf urls (-d <hostname> | [-p <program>] | --all)  
   bbrf blacklist (add|remove) ( - | <element>...) [-p <program>]
   bbrf agents
   bbrf agent ( list | (register | remove) <agent> | gateway [<url>])
@@ -26,6 +29,7 @@ Usage:
 Options:
   -h --help     Show this screen.
   -p <program>  Select a program to limit the command to. Not required when the command "use" has been run before.
+  -t <tag>      Specify one or more custom properties (tags) to add to your document. Format as key:value
   -s <source>   Provide an optional source string to store information about the source of the modified data.
   -v --version  Show the program version
   -d <hostname> Explicitly specify the hostname of a URL in case of relative paths
@@ -239,7 +243,7 @@ class BBRFClient:
         if len(add_inscope) > 0:
             self.add_inscope(add_inscope)
         
-        success, _ = self.api.add_documents('domain', add_domains, self.get_program(), source=self.arguments['-s'])
+        success, _ = self.api.add_documents('domain', add_domains, self.get_program(), source=self.arguments['-s'], tags=self.arguments['-t'])
         
         if self.arguments['--show-new']:
             return ["[NEW] "+x for x in success if x]
@@ -281,6 +285,9 @@ class BBRFClient:
                 domain = domain[:-1]
                 
             update_domains[domain] = {"ips": ips}
+            
+            if(self.arguments['-t'] and len(self.arguments['-t']) > 0):
+                update_domains[domain]['tags'] = {x.split(':', 1)[0]: x.split(':', 1)[1] for x in self.arguments['-t']}
         
         updated = self.api.update_documents('domain', {domain: update_domains[domain] for domain in update_domains.keys()})
         
@@ -317,7 +324,7 @@ class BBRFClient:
            
             add_ips[ip] = domains
 
-        success, _ = self.api.add_documents('ip', add_ips, self.get_program(), source=self.arguments['-s'])
+        success, _ = self.api.add_documents('ip', add_ips, self.get_program(), source=self.arguments['-s'], tags=self.arguments['-t'])
         
         if self.arguments['--show-new']:
             return ["[NEW] "+x for x in success if x]
@@ -353,6 +360,9 @@ class BBRFClient:
                     updated_domains.append(domain)
                 
             update_ips[ip] = {"domains": updated_domains}
+            
+            if(self.arguments['-t'] and len(self.arguments['-t']) > 0):
+                update_ips[ip]['tags'] = {x.split(':', 1)[0]: x.split(':', 1)[1] for x in self.arguments['-t']}
             
         updated = self.api.update_documents('ip', {ip: update_ips[ip] for ip in update_ips.keys()})
         
@@ -473,10 +483,15 @@ class BBRFClient:
                         "query": [query] if query else []
                     }
         
-        success, failed = self.api.add_documents('url', add_urls, self.get_program(), source=self.arguments['-s'])
+        success, failed = self.api.add_documents('url', add_urls, self.get_program(), source=self.arguments['-s'], tags=self.arguments['-t'])
         
         # assuming the failed updates were the result of duplicates, try bulk updating the url that failed
+        # but first add the tags to the document in case they need to be updated too
+        if(self.arguments['-t'] and len(self.arguments['-t']) > 0):
+            add_urls[url]['tags'] = {x.split(':', 1)[0]: x.split(':', 1)[1] for x in self.arguments['-t']}
         updated = self.api.update_documents('url', {url: add_urls[url] for url in failed})
+        
+        
             
         if self.arguments['--show-new']:
             return [ "[UPDATED] "+x for x in updated if x] + ["[NEW] "+x for x in success if x]
@@ -596,6 +611,19 @@ class BBRFClient:
             
     def listen_for_changes(self):
         self.api.listen_for_changes()
+        
+    def search_tags(self, doctype):
+        # Always use the active program unless --all is specified
+        program_name = self.get_program()
+        if(self.arguments['--all']):
+            program_name = False
+
+        if(self.arguments['before']):
+            return self.api.search_tags_between(self.arguments['<tag_name>'], self.arguments['<value>'], 'before', doctype, program_name)
+        if(self.arguments['after']):
+            return self.api.search_tags_between(self.arguments['<tag_name>'], self.arguments['<value>'], 'after', doctype, program_name)
+        else:
+            return self.api.search_tags(self.arguments['<tag_name>'], self.arguments['<value>'], doctype, self.arguments['-p'])
 
     def run(self):
         
@@ -632,6 +660,8 @@ class BBRFClient:
         if self.arguments['domains']:
             if self.arguments['<view>']:
                 return self.list_documents_view("domain", self.arguments['<view>'], self.arguments['--all'])
+            elif self.arguments['where']:
+                return self.search_tags("domain")
             else:
                 return self.list_domains(self.arguments['--all'])
 
@@ -667,8 +697,8 @@ class BBRFClient:
                     if not cdn:
                         filtered.append(ip)
                 return filtered
-            if self.arguments['<view>']:
-                return self.list_documents_view("ip", self.arguments['<view>'], self.arguments['--all'])
+            elif self.arguments['where']:
+                return self.search_tags("ip")
             return self.list_ips(self.arguments['--all'])
 
         if self.arguments['ip']:
@@ -727,6 +757,8 @@ class BBRFClient:
         if self.arguments['urls']:
             if self.arguments['-d']:
                 return self.list_urls("hostname",self.arguments['-d'])
+            elif self.arguments['where']:
+                return self.search_tags("url")
             elif self.arguments['<program>']:
                 return self.list_urls("program",self.arguments['<program>'])
             elif self.arguments['--all']:
