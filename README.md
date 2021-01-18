@@ -45,5 +45,6 @@ If you like looking at your data in another way than via a terminal window, you 
 If you're having CORS-related issues, make sure the origin `https://bbrf.me` is explicitly allowed in your database configuration:
 
 ```bash
+COUCHDB=https://<yourinstance>:6984/
 curl -X PUT $COUCHDB"_node/_local/_config/cors/origins" -u admin:password -d '"https://bbrf.me"'
 ```
