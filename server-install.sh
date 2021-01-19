@@ -16,7 +16,7 @@ echo "
 \"I added some ASCII art because you can't have a bash script without ASCII art\"  - @plenumlab								   
 "
 
-echo "Would you like to install CouchDB first? (Requires dcoker.io & docker-compose.)"
+echo "Would you like to install CouchDB first? (Requires docker.io & docker-compose.)"
 PS3="Please select an option (1 Or 2): "
 choices=("yes" "no")
 select choice in "${choices[@]}"; do
