@@ -199,7 +199,6 @@ class BBRFClient:
             domain = domain.lower()
             
             if ':' in domain:
-                print("nope")
                 domain, ips = domain.split(':')
                 ips = ips.split(',')
                 
@@ -237,7 +236,13 @@ class BBRFClient:
             # It must match the in scope
             if not self.matches_scope(domain, inscope):
                 continue
-            add_domains[domain] = ips
+                
+            # Add the ips if we already parsed other ips for this domain,
+            # or otherwise create a new one
+            if domain in add_domains and type(add_domains[domain]) is list:
+                add_domains[domain].extend(ips)
+            else:
+                add_domains[domain] = ips
         
         # add all new scope at once to drastically reduce runtime of large input
         if len(add_inscope) > 0:
@@ -322,7 +327,10 @@ class BBRFClient:
             if not REGEX_IP.match(ip):
                 continue
            
-            add_ips[ip] = domains
+            if ip in add_ips and type(add_ips[ip]) is list:
+                add_ips[ip].extend(domains)
+            else: 
+                add_ips[ip] = domains
 
         success, _ = self.api.add_documents('ip', add_ips, self.get_program(), source=self.arguments['-s'], tags=self.arguments['-t'])
         

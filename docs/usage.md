@@ -1,6 +1,6 @@
 # Usage
 
-The `docopt` section at the top of [bbrf.py](bbrf.py) will always contain the latest documentation. Or type `bbrf -h` to view the documentation in your terminal window:
+The `docopt` section at the top of [bbrf.py](../bbrf.py) will always contain the latest documentation. Or type `bbrf -h` to view the documentation in your terminal window:
 
 ```
 Usage:
