@@ -7,17 +7,21 @@ Usage:
   bbrf programs [--show-disabled]
   bbrf program (list [--show-disabled] | [active])
   bbrf domains [--view <view> (-p <program> | --all)]
-  bbrf domains where <tag_name> is [before | after] <value> [(-p <program> | --all)]
+  bbrf domains where <tag_name> is [before | after] <value> [-p <program> | --all]
   bbrf domain (add|remove|update) ( - | <domain>...) [-p <program> -s <source> --show-new -t <tag>...]
   bbrf ips [ --filter-cdns (-p <program> | --all)]
-  bbrf ips where <tag_name> is [before | after] <value> [(-p <program> | --all)]
+  bbrf ips where <tag_name> is [before | after] <value> [-p <program> | --all]
   bbrf ip (add|remove|update) ( - | <ip>...) [-p <program> -s <source> --show-new -t <tag>...]
   bbrf scope (in|out) [(--wildcard [--top])] ([-p <program>] | (--all [--show-disabled]))
   bbrf (inscope|outscope) (add|remove) (- | <element>...) [-p <program>]
   bbrf urls (-d <hostname> | [-p <program>] | --all)
-  bbrf urls where <tag_name> is [before | after] <value> [(-p <program> | --all)]
+  bbrf urls where <tag_name> is [before | after] <value> [-p <program> | --all]
   bbrf url add ( - | <url>...) [-d <hostname> -s <source> -p <program> --show-new -t <tag>...]
   bbrf url remove ( - | <url>...)
+  bbrf services [-p <program> | --all]
+  bbrf services where <tag_name> is [before | after] <value> [-p <program> | --all]
+  bbrf service add ( - | <service>...) [-s <source> -p <program> --show-new -t <tag>...]
+  bbrf service remove ( - | <service>...)
   bbrf blacklist (add|remove) ( - | <element>...) [-p <program>]
   bbrf agents
   bbrf agent ( list | (register | remove) <agent> | gateway [<url>])
@@ -289,7 +293,12 @@ class BBRFClient:
             if domain.endswith('.'):
                 domain = domain[:-1]
                 
-            update_domains[domain] = {"ips": ips}
+            # Add the ips if we already parsed other ips for this domain,
+            # or otherwise create a new one
+            if domain in update_domains and type(update_domains[domain]['ips']) is list:
+                update_domains[domain]['ips'].extend(ips)
+            else:
+                update_domains[domain] = {"ips": ips}
             
             if(self.arguments['-t'] and len(self.arguments['-t']) > 0):
                 update_domains[domain]['tags'] = {x.split(':', 1)[0]: x.split(':', 1)[1] for x in self.arguments['-t']}
@@ -366,8 +375,13 @@ class BBRFClient:
                     domain = domain[:-1]
                 if REGEX_DOMAIN.match(domain):
                     updated_domains.append(domain)
-                
-            update_ips[ip] = {"domains": updated_domains}
+            
+            # Add the domains if we already parsed other domains for this ip,
+            # or otherwise create a new one
+            if ip in update_ips and type(update_ips[ip]['domains']) is list:
+                update_ips[ip]['domains'].extend(updated_domains)
+            else:
+                update_ips[ip] = {"domains": updated_domains}
             
             if(self.arguments['-t'] and len(self.arguments['-t']) > 0):
                 update_ips[ip]['tags'] = {x.split(':', 1)[0]: x.split(':', 1)[1] for x in self.arguments['-t']}
@@ -496,7 +510,8 @@ class BBRFClient:
         # assuming the failed updates were the result of duplicates, try bulk updating the url that failed
         # but first add the tags to the document in case they need to be updated too
         if(self.arguments['-t'] and len(self.arguments['-t']) > 0):
-            add_urls[url]['tags'] = {x.split(':', 1)[0]: x.split(':', 1)[1] for x in self.arguments['-t']}
+            for url in failed:
+                add_urls[url]['tags'] = {x.split(':', 1)[0]: x.split(':', 1)[1] for x in self.arguments['-t']}
         updated = self.api.update_documents('url', {url: add_urls[url] for url in failed})
         
         
@@ -514,6 +529,72 @@ class BBRFClient:
         
         remove = {url.split(" ")[0]: {'_deleted': True} for url in urls}
         _ = self.api.update_documents('url', remove)
+        
+        
+    '''
+    Store services (i.e. open ports) of IP addresses
+    
+    The identifier will always 
+    
+    Expected format:
+    
+        services = [
+         "127.0.0.1:80",
+         "127.0.0.1:80:http",
+         "127.0.0.1:443,
+         "127.0.0.1:8443:https"
+        ]
+    '''
+    def add_services(self, services):
+        
+        # TODO: should this be matched against scope?
+        # BBRF doesn't currently support IPs or CIDR as scope, so
+        # this would require some additional features a that level.
+        # 
+        # (inscope, outscope) = self.api.get_program_scope(self.get_program())
+        add_services = {}
+        for service in services:
+            
+            ip = None
+            port = None
+            sname = None
+            
+            if ':' in service:
+                ip, port = service.split(':', 1)
+                
+                if ':' in port:
+                    port, sname = port.split(':', 1)
+
+            if not ip or not port:
+                continue
+            
+            if not REGEX_IP.match(ip):
+                continue
+            if not port.isnumeric():
+                continue
+            if int(port) < 0 or int(port) > 65535:
+                continue
+            
+            sid = ip+':'+port
+           
+            add_services[sid] = {'ip': ip, 'port': port}
+            
+            if sname:
+                add_services[sid]['service'] = sname
+
+        success, failed = self.api.add_documents('service', add_services, self.get_program(), source=self.arguments['-s'], tags=self.arguments['-t'])
+        
+        # assuming the failed updates were the result of duplicates, try bulk updating the services that failed
+        # but first add the tags to the document in case they need to be updated too
+        if(self.arguments['-t'] and len(self.arguments['-t']) > 0):
+            for sid in failed:
+                add_services[sid]['tags'] = {x.split(':', 1)[0]: x.split(':', 1)[1] for x in self.arguments['-t']}
+            print(add_services)
+                
+        updated = self.api.update_documents('service', {sid: add_services[sid] for sid in failed})
+        
+        if self.arguments['--show-new']:
+            return [ "[UPDATED] "+x for x in updated if x] + ["[NEW] "+x for x in success if x]
         
     
     def disable_program(self, program):
@@ -582,6 +663,11 @@ class BBRFClient:
             return self.api.get_urls_by_program() # An empty key will return all results
         else:
             return self.api.get_urls_by_program(self.get_program())
+        
+    def list_services(self, list_all = False):
+        if list_all:
+            return self.api.get_services_by_program_name()
+        return self.api.get_services_by_program_name(self.get_program())
     
     def list_documents_view(self, doctype, view, list_all = False):
         if list_all:
@@ -773,6 +859,19 @@ class BBRFClient:
                 return self.list_urls("all")
             else:
                 return self.list_urls("self")
+            
+        if self.arguments['service']:
+            if self.arguments['add']:
+                if self.arguments['<service>']:
+                    return self.add_services(self.arguments['<service>'])
+                if self.arguments['-']:
+                    return self.add_services([u.rstrip() for u in sys.stdin.read().split('\n')])
+            
+        if self.arguments['services']:
+            if self.arguments['where']:
+                return self.search_tags("service")
+            else:
+                return self.list_services(self.arguments['--all'])
             
         if self.arguments['blacklist']:
             if self.arguments['add']:

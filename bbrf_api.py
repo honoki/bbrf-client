@@ -7,7 +7,7 @@ from slackclient import SlackClient
 class BBRFApi:
     BBRF_API = None
     auth = None
-    doctypes = ['ip', 'domain', 'program', 'agent', 'url', 'config']
+    doctypes = ['ip', 'domain', 'program', 'agent', 'url', 'service', 'config']
     sc = None
     
     requests_session = None
@@ -69,6 +69,18 @@ class BBRFApi:
         # print all url, status, content_length if status and content length are set
         return [" ".join([str(x) for x in r['value'] if x]) for r in r.json()['rows']]
     
+    
+    '''
+    Get a list of all services, filtered by program name if provided.
+    '''
+    def get_services_by_program_name(self, program_name=None):
+        if program_name:
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/services?reduce=false&key="'+program_name+'"', headers={"Authorization": self.auth})
+        else:
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/services?reduce=false', headers={"Authorization": self.auth})
+        if 'error' in r.json():
+            raise Exception(r.json()['error'])
+        return [r['value'] for r in r.json()['rows']]
     
     '''
     Get all documents of a certain type
@@ -382,6 +394,7 @@ class BBRFApi:
                     pass # this is fine, will happen e.g. when adding a status code or content_length for the first time
                 else:
                     if not type(original_document[prop]) is type(updates[prop]):
+                        print(type(original_document[prop]))
                         print('[Error] The updated property '+prop+' doesn\'t have the right type. Cannot update '+updates['_id'])
                         updates = {}
                         continue
