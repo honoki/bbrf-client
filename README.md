@@ -31,7 +31,7 @@ bbrf domains
 
 ## Documentation
 
- * [Install the CouchDB server](docs/server.md) - set up a CouchDB server before using the bbrf client;
+ * [Install the CouchDB server](https://github.com/honoki/bbrf-server) - Ensure you have set up a BBRF server before using the client;
  * [Configure the client](docs/client.md) - learn how to start using the client on your workstations;
  * [AWS Lambda](docs/aws-lambda.md) - for more advanced use cases, deploy a bbrf client to AWS Lambda to integrate with bbrf agents and other lambdas;
  * [Usage](docs/usage.md) - view a number of more advanced examples, and learn how to set up a listener.
