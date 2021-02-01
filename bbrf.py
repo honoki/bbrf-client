@@ -49,7 +49,7 @@ from bbrf_api import BBRFApi
 from urllib.parse import urlparse
 from docopt import docopt
 
-CONFIG_FILE = '~/.bbrf/config.json'
+CONFIG_FILE = '~/.bbrf/config-local.json'
 # Thanks https://regexr.com/3au3g
 REGEX_DOMAIN = re.compile('^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
 # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
@@ -691,7 +691,7 @@ class BBRFClient:
         
         for e in elements:
             if e in blacklist:
-                blacklist.delete(e)
+                blacklist.remove(e)
                 
         self.api.update_program_blacklist(self.get_program(), blacklist)
         
