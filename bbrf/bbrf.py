@@ -45,7 +45,7 @@ import os
 import sys
 import json
 import re
-from bbrf_api import BBRFApi
+from . import bbrf_api
 from urllib.parse import urlparse
 from docopt import docopt
 
@@ -54,6 +54,7 @@ CONFIG_FILE = '~/.bbrf/config.json'
 REGEX_DOMAIN = re.compile('^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
 # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
 REGEX_IP = re.compile('^([0-9]{1,3}\.){3}[0-9]{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))?$')
+VERSION = '1.0.6'
 
 class BBRFClient:
     config = {}
@@ -63,7 +64,7 @@ class BBRFClient:
     def __init__(self, arguments, config=None):
         
         if not str(type(arguments)) == "<class 'docopt.Dict'>":
-            self.arguments = docopt(__doc__, argv=arguments, version='BBRF client 0.1b')
+            self.arguments = docopt(__doc__, argv=arguments, version=VERSION)
         else:
             self.arguments = arguments
             
@@ -81,7 +82,7 @@ class BBRFClient:
         elif 'slack_token' not in self.config:
             exit('[ERROR] Required configuration was not found: slack_token')
         else:
-            self.api = BBRFApi(self.config['couchdb'], self.config['username'], self.config['password'], self.config['slack_token'])
+            self.api = bbrf_api.BBRFApi(self.config['couchdb'], self.config['username'], self.config['password'], self.config['slack_token'])
 
     def new_program(self):
         # First set the program as the active one
@@ -928,9 +929,9 @@ class BBRFClient:
         except Exception:
             print('[WARNING] Could not write to config file - make sure it exists and is writable')
             
-            
-if __name__ == '__main__':
-    arguments = docopt(__doc__, version='BBRF client 0.1b')
+
+def main():
+    arguments = docopt(__doc__, version=VERSION)
     bbrf = BBRFClient(arguments)
     result = bbrf.run()
     if result:
@@ -938,3 +939,6 @@ if __name__ == '__main__':
             print("\n".join(result))
         else:
             print(result)
+            
+if __name__ == '__main__':
+    main()

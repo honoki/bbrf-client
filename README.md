@@ -1,5 +1,3 @@
-# bbrf-client
-
 ## Introduction
 
 The client component of the Bug Bounty Reconnaissance Framework (BBRF) is intended to facilitate the workflows of security researchers across multiple devices.
@@ -31,19 +29,59 @@ bbrf domains
 
 ## Documentation
 
- * [Install the CouchDB server](https://github.com/honoki/bbrf-server) - Ensure you have set up a BBRF server before using the client;
- * [Configure the client](docs/client.md) - learn how to start using the client on your workstations;
- * [AWS Lambda](docs/aws-lambda.md) - for more advanced use cases, deploy a bbrf client to AWS Lambda to integrate with bbrf agents and other lambdas;
- * [Usage](docs/usage.md) - view a number of more advanced examples, and learn how to set up a listener.
- 
-## Dashboard
+ * [Install the BBRF server](https://github.com/honoki/bbrf-server) - ensure you have a BBRF server running before making use of the client;
+ * [AWS Lambda](https://github.com/honoki/bbrf-client/docs/aws-lambda.md) - for more advanced use cases, deploy a BBRF client to AWS Lambda to integrate with BBRF agents and other lambdas;
+ * [Usage](https://github.com/honoki/bbrf-client/docs/usage.md) - view a number of more advanced examples, and learn how to set up a listener.
 
-If you like looking at your data in another way than via a terminal window, you can make use of the bbrf dashboard on https://bbrf.me. Just plug in your server URL, username and password, and the dashboard will pull your data and make it searchable. Note that all communication to the server happens via your browser, so your data remains safe!
+## Installation
 
-[![asciicast](docs/bbrf-dashboard.gif)](https://bbrf.me/)
+```
+~# pip install bbrf
+~# bbrf --version
+```
 
-If you're having CORS-related issues, make sure the origin `https://bbrf.me` is explicitly allowed in your database configuration:
+## Configuration
+
+To start using the command line interface, you need to create the config file `~/.bbrf/config.json` with the following contents:
+
+```json
+{
+    "username": "bbrf",
+    "password": "<your secure password>",
+    "couchdb": "https://<your-instance>:6984/bbrf",
+    "slack_token": "<a slack token to receive notifications>"
+}
+```
+
+Now you're ready to use BBRF from your command line:
 
 ```bash
-curl -X PUT $COUCHDB"_node/_local/_config/cors/origins" -u admin:password -d '"https://bbrf.me"'
+~# bbrf programs
 ```
+
+## Python module
+
+To use BBRF in your Python projects, use the interface as follows:
+
+```python
+from bbrf.bbrf import BBRFClient as bbrf
+
+# this will use the system's default ~/.bbrf/config.json file:
+programs = bbrf('programs').run()
+
+# to specify a custom configuration, provide a second argument:
+conf = {
+    "username": "bbrf",
+    "password": "<your secure password>",
+    "couchdb": "https://<your-instance>:6984/bbrf",
+    "slack_token": "<a slack token to receive notifications>"
+}
+
+domains = bbrf('domains --view resolved', conf).run()
+```
+
+## Dashboard
+
+If you like browsing through your recon data with a GUI, you can make use of the [bbrf dashboard](https://github.com/honoki/bbrf-dashboard) on https://bbrf.me. Just plug in your server URL, username and password, and the dashboard will pull your data and make it searchable. Note that all communication to the server happens via your browser, so your data remains safe!
+
+[![asciicast](docs/bbrf-dashboard.gif)](https://bbrf.me/)

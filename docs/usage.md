@@ -4,17 +4,25 @@ The `docopt` section at the top of [bbrf.py](../bbrf.py) will always contain the
 
 ```
 Usage:
-  bbrf (new|use|disable|enable) <program>
+  bbrf (new|use|disable|enable) <program> [ -t <tag>... ]
   bbrf programs [--show-disabled]
   bbrf program (list [--show-disabled] | [active])
   bbrf domains [--view <view> (-p <program> | --all)]
-  bbrf domain (add|remove|update) ( - | <domain>...) [-p <program> -s <source> --show-new]
-  bbrf ips [--view <view> --filter-cdns (-p <program> | --all)]
-  bbrf ip (add|remove|update) ( - | <ip>...) [-p <program> -s <source> --show-new]
+  bbrf domains where <tag_name> is [before | after] <value> [-p <program> | --all]
+  bbrf domain (add|remove|update) ( - | <domain>...) [-p <program> -s <source> --show-new -t <tag>...]
+  bbrf ips [ --filter-cdns (-p <program> | --all)]
+  bbrf ips where <tag_name> is [before | after] <value> [-p <program> | --all]
+  bbrf ip (add|remove|update) ( - | <ip>...) [-p <program> -s <source> --show-new -t <tag>...]
   bbrf scope (in|out) [(--wildcard [--top])] ([-p <program>] | (--all [--show-disabled]))
   bbrf (inscope|outscope) (add|remove) (- | <element>...) [-p <program>]
-  bbrf url add ( - | <url>...) [-d <hostname> -s <source> -p <program> --show-new]
-  bbrf urls (-d <hostname> | [-p <program>] | --all)  
+  bbrf urls (-d <hostname> | [-p <program>] | --all)
+  bbrf urls where <tag_name> is [before | after] <value> [-p <program> | --all]
+  bbrf url add ( - | <url>...) [-d <hostname> -s <source> -p <program> --show-new -t <tag>...]
+  bbrf url remove ( - | <url>...)
+  bbrf services [-p <program> | --all]
+  bbrf services where <tag_name> is [before | after] <value> [-p <program> | --all]
+  bbrf service add ( - | <service>...) [-s <source> -p <program> --show-new -t <tag>...]
+  bbrf service remove ( - | <service>...)
   bbrf blacklist (add|remove) ( - | <element>...) [-p <program>]
   bbrf agents
   bbrf agent ( list | (register | remove) <agent> | gateway [<url>])
@@ -22,10 +30,11 @@ Usage:
   bbrf show <document>
   bbrf listen
   bbrf alert ( - | <message>) [-s <source>]
-  
+
 Options:
   -h --help     Show this screen.
   -p <program>  Select a program to limit the command to. Not required when the command "use" has been run before.
+  -t <tag>      Specify one or more custom properties (tags) to add to your document. Format as key:value
   -s <source>   Provide an optional source string to store information about the source of the modified data.
   -v --version  Show the program version
   -d <hostname> Explicitly specify the hostname of a URL in case of relative paths
