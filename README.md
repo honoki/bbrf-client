@@ -30,8 +30,8 @@ bbrf domains
 ## Documentation
 
  * [Install the BBRF server](https://github.com/honoki/bbrf-server) - ensure you have a BBRF server running before making use of the client;
- * [AWS Lambda](https://github.com/honoki/bbrf-client/docs/aws-lambda.md) - for more advanced use cases, deploy a BBRF client to AWS Lambda to integrate with BBRF agents and other lambdas;
- * [Usage](https://github.com/honoki/bbrf-client/docs/usage.md) - view a number of more advanced examples, and learn how to set up a listener.
+ * [AWS Lambda](https://github.com/honoki/bbrf-client/blob/master/docs/aws-lambda.md) - for more advanced use cases, deploy a BBRF client to AWS Lambda to integrate with BBRF agents and other lambdas;
+ * [Usage](https://github.com/honoki/bbrf-client/blob/master/docs/usage.md) - view a number of more advanced examples, and learn how to set up a listener.
 
 ## Installation
 
