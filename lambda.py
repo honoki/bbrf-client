@@ -1,5 +1,5 @@
 import sys
-from bbrf import BBRFClient
+from bbrf.bbrf import BBRFClient
 import json
 import os
 

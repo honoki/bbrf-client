@@ -2,9 +2,9 @@
 
 The bbrf client can be easily deployed to AWS Lambda via the [Serverless framework](https://www.serverless.com/). I recommend using this if you want to consume output of tools without having a local installation of the bbrf client ready.
 
-```bash
-~$ cd bbrf-client
-~$ serverless deploy
+```
+~# cd bbrf-client
+~# serverless deploy
 [...snip...]
 api keys:
   None
@@ -17,7 +17,7 @@ functions:
 Now you can run bbrf commands in the cloud via the Lambda API Gateway as follows:
 
 ```
-~$ curl https://[redacted].execute-api.us-east-1.amazonaws.com/dev/bbrf -d 'task=domains -p vzm'
+~# curl https://[redacted].execute-api.us-east-1.amazonaws.com/dev/bbrf -d 'task=domains -p vzm'
 aa.calendar.yahoo.com
 address.news.yahoo.com
 admin.finance.yahoo.com

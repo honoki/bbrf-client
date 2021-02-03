@@ -6,32 +6,32 @@ Read the blog post: https://honoki.net/2020/10/08/introducing-bbrf-yet-another-b
 
 The primary function of the client is providing easy access to information that is stored in a centralized BBRF document store. For example, to quickly create and initialize a new program with a couple of domains, you can try:
 
-```bash
+```
 # create a new program
-bbrf new vzm
-bbrf inscope add '*.yahoo.com' '*.yahoo.be'
-bbrf domain add www.yahoo.com www.yahoo.be
+~# bbrf new vzm
+~# bbrf inscope add '*.yahoo.com' '*.yahoo.be'
+~# bbrf domain add www.yahoo.com www.yahoo.be
 ```
 
 To add a list of ips from a file or other program, you can pipe into `bbrf`:
 
-```bash
-bbrf use vzm
-cat ips.txt | bbrf ip add -
+```
+~# bbrf use vzm
+~# cat ips.txt | bbrf ip add -
 ```
 
 Now, to list all known domains belonging to the active program:
 
-```bash
-bbrf domains
+```
+~# bbrf domains
 ```
 
 
 ## Documentation
 
  * [Install the BBRF server](https://github.com/honoki/bbrf-server) - ensure you have a BBRF server running before making use of the client;
- * [AWS Lambda](https://github.com/honoki/bbrf-client/docs/aws-lambda.md) - for more advanced use cases, deploy a BBRF client to AWS Lambda to integrate with BBRF agents and other lambdas;
- * [Usage](https://github.com/honoki/bbrf-client/docs/usage.md) - view a number of more advanced examples, and learn how to set up a listener.
+ * [AWS Lambda](/docs/aws-lambda.md) - for more advanced use cases, deploy a BBRF client to AWS Lambda to integrate with BBRF agents and other lambdas;
+ * [Usage](/docs/usage.md) - view a number of more advanced examples, and learn how to set up a listener.
 
 ## Installation
 
@@ -55,7 +55,7 @@ To start using the command line interface, you need to create the config file `~
 
 Now you're ready to use BBRF from your command line:
 
-```bash
+```
 ~# bbrf programs
 ```
 
