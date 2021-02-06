@@ -69,6 +69,7 @@ bbrf domains --view unresolved | \
       >(grep ' A ' | awk -F' ' '{print $7":"$4}' | bbrf ip add - -s massdns) \
       >(grep ' A ' | awk -F' ' '{print $7":"$4}' | bbrf ip update -);
 ```
+You can find the a updated resolver.txt file from [`here`](https://raw.githubusercontent.com/blechschmidt/massdns/master/lists/resolvers.txt)
 
 ## URLs
 
