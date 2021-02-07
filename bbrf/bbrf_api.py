@@ -23,11 +23,14 @@ class BBRFApi:
     '''
     Create a new program.
     '''
-    def create_new_program(self, program_name=None, disabled=False, passive_only=False):
+    def create_new_program(self, program_name=None, disabled=False, passive_only=False, tags=[]):
         if not program_name:
             return
         else:
             program = {"type": "program", "disabled": disabled, "passive_only": passive_only, "inscope": [], "outscope": []}
+            if tags:
+                tag_map = {x.split(':', 1)[0]: x.split(':', 1)[1] for x in tags}
+                program['tags'] = tag_map
             r = self.requests_session.put(self.BBRF_API+'/'+program_name, json.dumps(program), headers={"Authorization": self.auth})
         if 'error' in r.json():
             raise Exception(r.json()['error'])

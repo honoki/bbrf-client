@@ -5,7 +5,8 @@
 Usage:
   bbrf (new|use|disable|enable) <program> [ -t <tag>... ]
   bbrf programs [--show-disabled]
-  bbrf program (list [--show-disabled] | [active])
+  bbrf programs where <tag_name> is [before | after] <value>
+  bbrf program ([active] | update [ <program>... | - ] [ -t <tag>... ])
   bbrf domains [--view <view> (-p <program> | --all)]
   bbrf domains where <tag_name> is [before | after] <value> [-p <program> | --all]
   bbrf domain (add|remove|update) ( - | <domain>...) [-p <program> -s <source> --show-new -t <tag>...]
@@ -13,6 +14,7 @@ Usage:
   bbrf ips where <tag_name> is [before | after] <value> [-p <program> | --all]
   bbrf ip (add|remove|update) ( - | <ip>...) [-p <program> -s <source> --show-new -t <tag>...]
   bbrf scope (in|out) [(--wildcard [--top])] ([-p <program>] | (--all [--show-disabled]))
+  bbrf scope filter (in | out) [(--wildcard [--top])] ([-p <program>] | (--all [--show-disabled]))
   bbrf (inscope|outscope) (add|remove) (- | <element>...) [-p <program>]
   bbrf urls (-d <hostname> | [-p <program>] | --all)
   bbrf urls where <tag_name> is [before | after] <value> [-p <program> | --all]
@@ -24,7 +26,7 @@ Usage:
   bbrf service remove ( - | <service>...)
   bbrf blacklist (add|remove) ( - | <element>...) [-p <program>]
   bbrf agents
-  bbrf agent ( list | (register | remove) <agent> | gateway [<url>])
+  bbrf agent ( list | (register | remove) <agent>... | gateway [<url>])
   bbrf run <agent> [-p <program>]
   bbrf show <document>
   bbrf listen
@@ -54,7 +56,7 @@ CONFIG_FILE = '~/.bbrf/config.json'
 REGEX_DOMAIN = re.compile('^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
 # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
 REGEX_IP = re.compile('^([0-9]{1,3}\.){3}[0-9]{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))?$')
-VERSION = '1.0.6'
+VERSION = '1.0.7'
 
 class BBRFClient:
     config = {}
@@ -93,11 +95,28 @@ class BBRFClient:
     def list_programs(self, show_disabled):
         return self.api.get_programs(show_disabled)
     
+    # updating programs this way only supports tags for now
+    def update_programs(self, programs):
+        update_programs = {}
+            
+        for program in programs:
+            
+            if(self.arguments['-t'] and len(self.arguments['-t']) > 0):
+                update_programs[program] = {}
+                update_programs[program]['tags'] = {x.split(':', 1)[0]: x.split(':', 1)[1] for x in self.arguments['-t']}
+            
+        updated = self.api.update_documents('program', {program: update_programs[program] for program in update_programs.keys()})
+    
     def list_agents(self):
         return [r['key'] for r in self.api.get_agents()]
     
-    def new_agent(self, agent_name):
-        self.api.create_new_agent(agent_name)
+    def register_agents(self, agent_names):
+        for agent in agent_names:
+            try:
+                self.api.create_new_agent(agent_name)
+            except e:
+                # this agent probably exists already
+                print('Error adding new agent ' + agent + '...')
     
     '''
     Specify a program to be used, and avoid having to type -p <name>
@@ -105,9 +124,11 @@ class BBRFClient:
     '''
     def use_program(self, check_exists=True):
         pro = self.arguments['<program>']
+        if type(pro) is list:
+            pro = pro[0]
         if check_exists and pro not in self.list_programs(True):
             raise Exception('This program does not exist.')
-        self.config['program'] = self.arguments['<program>']
+        self.config['program'] = pro
     
     '''
     Check whether a domain matches a scope
@@ -738,17 +759,19 @@ class BBRFClient:
             self.use_program()
             
         if self.arguments['disable']:
-            self.disable_program(self.arguments['<program>'])
+            self.disable_program(self.arguments['<program>'][0])
             
         if self.arguments['enable']:
-            self.enable_program(self.arguments['<program>'])
+            self.enable_program(self.arguments['<program>'][0])
 
         if self.arguments['programs']:
             return self.list_programs(self.arguments['--show-disabled'])
             
         if self.arguments['program']:
-            if self.arguments['list']:
-                return self.list_programs(self.arguments['--show-disabled'])
+            if self.arguments['active']:
+                return self.get_program()
+            if self.arguments['update']:
+                return self.update_programs(self.arguments['<program>'])
             else:
                 return self.get_program()
 
@@ -895,12 +918,8 @@ class BBRFClient:
             if self.arguments['remove']:
                 return self.api.remove_document('agent', {'key': self.arguments['<agent>']})
             if self.arguments['register']:
-                if self.arguments['<agent>'] not in self.list_agents():
-                    return self.new_agent(self.arguments['<agent>'])
-                else:
-                    return 'This agent is already registered'
-            if self.arguments['gateway']:
-                if len(self.arguments['<url>']) > 0:
+                return self.register_agents(self.arguments['<agent>'])
+                if self.arguments['gateway']:
                     return self.api.set_agent_gateway(self.arguments['<url>'][0])
                 else:
                     return json.loads(self.api.get_document('agents_api_gateway')).get('url')
@@ -922,7 +941,20 @@ class BBRFClient:
                     self.api.create_alert(line, self.get_program(), self.arguments['-s'])
                     
         if self.arguments['scope']:
-            return self.get_scope()
+            if self.arguments['filter']:
+                # note that get_scope handles all the additional flags --all --wildcard --top etc.
+                if self.arguments['in']:
+                    # if filtering against the inscope, we also need to ensure it's NOT in the outscope to avoid confusion
+                    in_match = [ line for line in sys.stdin.read().split('\n') if self.matches_scope(line, self.get_scope()) ]
+                    # set the scope to 'out' -- hacky but works!
+                    self.arguments['in'] = False
+                    self.arguments['out'] = True
+                    return [ line for line in in_match if not self.matches_scope(line, self.get_scope()) ]
+                
+                # otherwise it's easy - just print whatever matches the outscope
+                return [ line for line in sys.stdin.read().split('\n') if self.matches_scope(line, self.get_scope()) ]
+            else:
+                return self.get_scope()
 
         try:
             self.save_config()
