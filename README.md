@@ -1,3 +1,6 @@
+![PyPI](https://img.shields.io/pypi/v/bbrf)
+![PyPI - Downloads](https://img.shields.io/pypi/dm/bbrf)
+
 ## Introduction
 
 The client component of the Bug Bounty Reconnaissance Framework (BBRF) is intended to facilitate the workflows of security researchers across multiple devices.
