@@ -56,7 +56,7 @@ CONFIG_FILE = '~/.bbrf/config.json'
 REGEX_DOMAIN = re.compile('^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
 # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
 REGEX_IP = re.compile('^([0-9]{1,3}\.){3}[0-9]{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))?$')
-VERSION = '1.0.8'
+VERSION = '1.0.10'
 
 class BBRFClient:
     config = {}
@@ -90,7 +90,7 @@ class BBRFClient:
         # First set the program as the active one
         self.use_program(False)
         # and add it to the db
-        self.api.create_new_program(self.get_program())
+        self.api.create_new_program(self.get_program(), tags=self.arguments['-t'])
 
     def list_programs(self, show_disabled):
         return self.api.get_programs(show_disabled)
@@ -113,10 +113,17 @@ class BBRFClient:
     def register_agents(self, agent_names):
         for agent in agent_names:
             try:
-                self.api.create_new_agent(agent_name)
-            except e:
+                self.api.create_new_agent(agent)
+            except:
                 # this agent probably exists already
                 print('Error adding new agent ' + agent + '...')
+    
+    def remove_agents(self, agent_names):
+        for agent in agent_names:
+            try:
+                self.api.remove_document('agent', {'key': agent})
+            except:
+                continue
     
     '''
     Specify a program to be used, and avoid having to type -p <name>
@@ -745,7 +752,7 @@ class BBRFClient:
         
         import pprint
         pp = pprint.PrettyPrinter(indent=4)
-        #pp.pprint(self.arguments)
+        # pp.pprint(self.arguments)
         
         try:
             self.load_config()
@@ -765,6 +772,8 @@ class BBRFClient:
             self.enable_program(self.arguments['<program>'][0])
 
         if self.arguments['programs']:
+            if self.arguments['where']:
+                return self.search_tags("program")
             return self.list_programs(self.arguments['--show-disabled'])
             
         if self.arguments['program']:
@@ -916,16 +925,17 @@ class BBRFClient:
             if self.arguments['list']:
                 return self.list_agents()
             if self.arguments['remove']:
-                return self.api.remove_document('agent', {'key': self.arguments['<agent>']})
+                self.remove_agents(self.arguments['<agent>'])
             if self.arguments['register']:
                 return self.register_agents(self.arguments['<agent>'])
-                if self.arguments['gateway']:
+            if self.arguments['gateway']:
+                if self.arguments['<url>']:
                     return self.api.set_agent_gateway(self.arguments['<url>'][0])
                 else:
                     return json.loads(self.api.get_document('agents_api_gateway')).get('url')
         
         if self.arguments['run']:
-            return self.api.run_agent(self.arguments['<agent>'], self.get_program())
+            return self.api.run_agent(self.arguments['<agent>'][0], self.get_program())
         
         if self.arguments['show']:
             return self.api.get_document(self.arguments['<document>'])

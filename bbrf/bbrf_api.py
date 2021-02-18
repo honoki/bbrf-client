@@ -276,18 +276,18 @@ class BBRFApi:
             
         if type(document) is dict:
             document = self.get_document_id_by_properties(doctype, document)
-            print(document)
+            # print(document)
             
         # Need to encode the document so it can handle CIDR ranges including /
         r = self.requests_session.get(self.BBRF_API+'/'+requests.utils.quote(document, safe=''), headers={"Authorization": self.auth})
-        print(r.json())
+        # print(r.json())
         if 'error' in r.json() and r.json()['error'] != 'not_found':
             raise Exception(r.json()['error'])
         elif 'error' in r.json() and r.json()['error'] == 'not_found':
             return
         if 'type' in r.json() and not r.json()['type'] == doctype:
             raise Exception('The specified document (type: '+r.json()['type']+') is not of the requested type '+doctype)
-            print("here4")
+            # print("here4")
         if '_rev' in r.json():
             r = self.requests_session.delete(self.BBRF_API+'/'+requests.utils.quote(document, safe='')+'?rev='+r.json()['_rev'], headers={"Authorization": self.auth})
             if 'error' in r.json() and r.json()['error'] != 'not_found':
