@@ -14,7 +14,7 @@ If you are new to BBRF, you will need to deploy a [BBRF server](https://github.c
 pip install bbrf
 
 # ensure you have the required configuration in ~/.bbrf/config.json
-cat > ~/.bbrf/config << EOF
+cat > ~/.bbrf/config.json << EOF
 {
     "username": "bbrf",
     "password": "<your secure password>",
