@@ -228,7 +228,7 @@ bbrf ip update 1.2.3.4 -t added_by:
 
 To facilitate basic data querying, the BBRF server provides an indexed search based on all custom tags, as well as some default properties of all document types:
 
-```
+```bash
 # search domains based on custom tags:
 bbrf domains where added_by is pieter --all
 bbrf domains where last_updated is before 1610698911
