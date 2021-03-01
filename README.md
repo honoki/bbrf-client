@@ -18,8 +18,10 @@ cat > ~/.bbrf/config.json << EOF
 {
     "username": "bbrf",
     "password": "<your secure password>",
-    "couchdb": "https://<your-bbrf-server>:6984/bbrf",
-    "slack_token": "<a slack token to receive notifications>"
+    "couchdb": "https://<your-bbrf-server>/bbrf",
+    "slack_token": "<a slack token to receive notifications>",
+    "discord_webhook": "<your discord webhook>",
+    "ignore_ssl_errors": false
 }
 EOF
 
@@ -100,8 +102,10 @@ programs = bbrf('programs').run()
 conf = {
     "username": "bbrf",
     "password": "<your secure password>",
-    "couchdb": "https://<your-instance>:6984/bbrf",
-    "slack_token": "<a slack token to receive notifications>"
+    "couchdb": "https://<your-instance>/bbrf",
+    "slack_token": "<a slack token to receive notifications>",
+    "discord_webhook": "<your discord webhook>",
+    "ignore_ssl_errors": false
 }
 
 domains = bbrf('domains --view resolved', conf).run()

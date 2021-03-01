@@ -9,15 +9,22 @@ class BBRFApi:
     auth = None
     doctypes = ['ip', 'domain', 'program', 'agent', 'url', 'service', 'config']
     sc = None
+    discord_webhook = None
     
     requests_session = None
     
-    def __init__(self, couchdb_url, user, pwd, slack_token):
+    def __init__(self, couchdb_url, user, pwd, slack_token = None, discord_webhook = None, ignore_ssl_errors = False):
         auth = user+':'+pwd
         self.auth = 'Basic '+base64.b64encode(auth.encode('utf-8')).decode('utf-8')
         self.requests_session = requests.Session()
         if slack_token:
             self.sc = SlackClient(slack_token)
+        if discord_webhook:
+            self.discord_webhook = discord_webhook
+        if ignore_ssl_errors:
+            from urllib3.exceptions import InsecureRequestWarning
+            requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
+            self.requests_session.verify = False
         self.BBRF_API = couchdb_url
     
     '''
@@ -479,7 +486,7 @@ class BBRFApi:
         last_update = 0
         
         while not error:
-            with requests.get(url+seq, timeout=90, headers={"Authorization": self.auth}, stream=True) as resp:
+            with self.requests_session.get(url+seq, timeout=90, headers={"Authorization": self.auth}, stream=True) as resp:
                 for chunk in resp.iter_content(None):
                     if chunk:  # filter out keep-alive new chunks
                         chunk = chunk.decode("utf-8")
@@ -528,12 +535,15 @@ class BBRFApi:
                     # also notify when a new notification was added
                     if 'type' in change['doc'] and change['doc']['type'] == 'alert':
                         message += '[ALERT] '
-                        if 'source' in change['doc']:
+                        if 'source' in change['doc'] and change['doc']['source']:
                             message += '['+change['doc']['source']+'] '
                         message += change['doc']['message']
         
         if message:
-            print(self.sc.api_call('chat.postMessage', channel='bbrf', text=message, username='bbrf-bot'))
+            if self.sc:
+                self.sc.api_call('chat.postMessage', channel='bbrf', text=message, username='bbrf-bot')
+            if self.discord_webhook:
+                requests.post(self.discord_webhook, json.dumps({'content': message}), headers={'Content-Type': 'application/json'})
         
         return error, seq
     

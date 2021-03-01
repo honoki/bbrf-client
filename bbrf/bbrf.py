@@ -56,7 +56,7 @@ CONFIG_FILE = '~/.bbrf/config.json'
 REGEX_DOMAIN = re.compile('^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
 # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
 REGEX_IP = re.compile('^([0-9]{1,3}\.){3}[0-9]{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))?$')
-VERSION = '1.0.10'
+VERSION = '1.1.0'
 
 class BBRFClient:
     config = {}
@@ -81,10 +81,18 @@ class BBRFClient:
             exit('[ERROR] Required configuration was not found: password')
         elif 'couchdb' not in self.config:
             exit('[ERROR] Required configuration was not found: couchdb')
-        elif 'slack_token' not in self.config:
-            exit('[ERROR] Required configuration was not found: slack_token')
+        #elif 'slack_token' not in self.config:
+        #    exit('[WARNING] Optional configuration was not found: slack_token')
+        
         else:
-            self.api = bbrf_api.BBRFApi(self.config['couchdb'], self.config['username'], self.config['password'], self.config['slack_token'])
+            self.api = bbrf_api.BBRFApi(
+                self.config['couchdb'],
+                self.config['username'],
+                self.config['password'],
+                slack_token=self.config['slack_token'] if 'slack_token' in self.config else None,
+                discord_webhook = self.config['discord_webhook'] if 'discord_webhook' in self.config else None,
+                ignore_ssl_errors = self.config['ignore_ssl_errors'] if 'ignore_ssl_errors' in self.config else None
+            )
 
     def new_program(self):
         # First set the program as the active one
