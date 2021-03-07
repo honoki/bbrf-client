@@ -1,5 +1,6 @@
-![PyPI](https://img.shields.io/pypi/v/bbrf)
-![PyPI - Downloads](https://img.shields.io/pypi/dm/bbrf)
+![PyPI](https://img.shields.io/pypi/v/bbrf?style=flat-square)
+![PyPI - Downloads](https://img.shields.io/pypi/dm/bbrf?style=flat-square)
+[![Twitter Follow](https://img.shields.io/twitter/follow/honoki?style=flat-square)](https://twitter.com/honoki)
 
 ## Introduction
 
