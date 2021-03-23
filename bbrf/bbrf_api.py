@@ -2,6 +2,7 @@ import requests
 import base64
 import json
 from slackclient import SlackClient
+import logging
 
 
 class BBRFApi:
@@ -10,13 +11,21 @@ class BBRFApi:
     doctypes = ['ip', 'domain', 'program', 'agent', 'url', 'service', 'config']
     sc = None
     discord_webhook = None
+    do_debug = False
     
     requests_session = None
     
-    def __init__(self, couchdb_url, user, pwd, slack_token = None, discord_webhook = None, ignore_ssl_errors = False):
+    def __init__(self, couchdb_url, user, pwd, slack_token = None, discord_webhook = None, ignore_ssl_errors = False, debug = False):
         auth = user+':'+pwd
         self.auth = 'Basic '+base64.b64encode(auth.encode('utf-8')).decode('utf-8')
         self.requests_session = requests.Session()
+        self.do_debug = debug
+        if debug:
+            logging.basicConfig()
+            logging.getLogger().setLevel(logging.DEBUG)
+            requests_log = logging.getLogger("requests.packages.urllib3")
+            requests_log.setLevel(logging.DEBUG)
+            requests_log.propagate = True
         if slack_token:
             self.sc = SlackClient(slack_token)
         if discord_webhook:
@@ -36,11 +45,10 @@ class BBRFApi:
         else:
             program = {"type": "program", "disabled": disabled, "passive_only": passive_only, "inscope": [], "outscope": []}
             if tags:
-                tag_map = {x.split(':', 1)[0]: x.split(':', 1)[1] for x in tags}
-                program['tags'] = tag_map
+                program['tags'] = self.process_tags(tags)
             r = self.requests_session.put(self.BBRF_API+'/'+program_name, json.dumps(program), headers={"Authorization": self.auth})
         if 'error' in r.json():
-            raise Exception(r.json()['error'])
+            raise Exception('BBRF server error: '+r.json()['error'])
     
     '''
     Get a list of all domains, filtered by program name if provided.
@@ -53,32 +61,41 @@ class BBRFApi:
         else:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/domains?reduce=false', headers={"Authorization": self.auth})
         if 'error' in r.json():
-            raise Exception(r.json()['error'])
+            raise Exception('BBRF server error: '+r.json()['error'])
         return [r['value'] for r in r.json()['rows']]
     
     '''
     Get a list of all urls, filtered by program or hostname if provided.
     '''
-    def get_urls_by_hostname(self, hostname=None):
+    def get_urls_by_hostname(self, hostname=None, with_query=False):
         if hostname:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/urls_by_hostname?reduce=false&key="'+hostname+'"', headers={"Authorization": self.auth})
         else:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/urls_by_hostname?reduce=false', headers={"Authorization": self.auth})
         if 'error' in r.json():
-            raise Exception(r.json()['error'])
+            raise Exception('BBRF server error: '+r.json()['error'])
         # print all url, status, content_length if status and content length are set    
-        return [" ".join([str(x) for x in r['value'] if x]) for r in r.json()['rows']]
+        return self.process_urls(r.json()['rows'], with_query)
     
-    def get_urls_by_program(self, program=None):
+    def get_urls_by_program(self, program=None, with_query=False):
         if program:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/urls_by_program?reduce=false&key="'+program+'"', headers={"Authorization": self.auth})
         else:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/urls_by_program?reduce=false', headers={"Authorization": self.auth})
         if 'error' in r.json():
-            raise Exception(r.json()['error'])
-        # print all url, status, content_length if status and content length are set
-        return [" ".join([str(x) for x in r['value'] if x]) for r in r.json()['rows']]
-    
+            raise Exception('BBRF server error: '+r.json()['error'])
+        return self.process_urls(r.json()['rows'], with_query)
+        
+    def process_urls(self, urls, with_query=False):
+        if not with_query:
+            # print all url, status, content_length if status and content length are set
+            return [" ".join([str(x) for x in r['value'][:3] if x]) for r in urls]
+        else:
+            # get a list of URLs without any queries
+            no_query = [" ".join([str(x) for x in r['value'][:3] if x]) for r in urls if len(r['value'][3]) == 0]
+            # expand the URLs that do have queries
+            expanded = [ [url['value'][0]+'?'+q] + url['value'][1:3] for url in urls for q in url['value'][3] if len(url['value'][3]) > 0]
+            return [" ".join([str(x) for x in r[:3] if x]) for r in expanded] + no_query
     
     '''
     Get a list of all services, filtered by program name if provided.
@@ -89,7 +106,7 @@ class BBRFApi:
         else:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/services?reduce=false', headers={"Authorization": self.auth})
         if 'error' in r.json():
-            raise Exception(r.json()['error'])
+            raise Exception('BBRF server error: '+r.json()['error'])
         return [r['value'] for r in r.json()['rows']]
     
     '''
@@ -105,7 +122,7 @@ class BBRFApi:
         else:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/'+doctype+'s?reduce=false', headers={"Authorization": self.auth})
         if 'error' in r.json():
-            raise Exception(r.json()['error'])
+            raise Exception('BBRF server error: '+r.json()['error'])
         return [r['value'] for r in r.json()['rows']]
     
     '''
@@ -119,92 +136,113 @@ class BBRFApi:
         else:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/'+doctype+'s_'+view+'?reduce=false', headers={"Authorization": self.auth})
         if 'error' in r.json():
-            raise Exception(r.json()['error'])
+            raise Exception('BBRF server error: '+r.json()['error'])
         return [r['value'] for r in r.json()['rows']]
     
     '''
     Get a list of all ips, filtered by program name if provided.
     '''
-    def get_ips_by_program_name(self, program_name=None):
+    def get_ips_by_program_name(self, program_name=None, filter_cdn=False):
+        
+        cdn_filter = '_no_cdn' if filter_cdn else ''
+        
         if program_name:
-            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/ips?reduce=false&key="'+program_name+'"', headers={"Authorization": self.auth})
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/ips'+cdn_filter+'?reduce=false&key="'+program_name+'"', headers={"Authorization": self.auth})
         else:
-            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/ips?reduce=false', headers={"Authorization": self.auth})
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/ips'+cdn_filter+'?reduce=false', headers={"Authorization": self.auth})
         if 'error' in r.json():
-            raise Exception(r.json()['error'])
+            raise Exception('BBRF server error: '+r.json()['error'])
         return [r['value'] for r in r.json()['rows']]
     
     '''
     Get a list of all programs.
     '''
-    def get_programs(self, show_disabled=False):
+    def get_programs(self, show_disabled=False, show_empty_scope=False):
         if show_disabled:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/programs?reduce=false', headers={"Authorization": self.auth})
         else:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/programs?reduce=false&key=false', headers={"Authorization": self.auth})
         if 'error' in r.json():
-            raise Exception(r.json()['error'])
-        return [r['value'] for r in r.json()['rows']]
+            raise Exception('BBRF server error: '+r.json()['error'])
+        
+        try:
+            if show_empty_scope:
+                return [r['id'] for r in r.json()['rows']]
+            else:
+                return [r['id'] for r in r.json()['rows'] if r['value'] > 0]
+        except:
+            print('[WARNING] Your BBRF server views are deprecated, it is strongly recommended to upgrade. Run `bbrf server upgrade` to upgrade.')
+            return [r['value'] for r in r.json()['rows']]
     
     def get_program_scope(self, program_name):
+        self.debug('getting program scope')
         r = self.requests_session.get(self.BBRF_API+'/'+program_name, headers={"Authorization": self.auth})
         if 'error' in r.json():
-            raise Exception(r.json()['error'])
-        return r.json()['inscope'], r.json()['outscope']
+            raise Exception('BBRF server error: '+r.json()['error'])
+        return r.json(), r.json()['inscope'], r.json()['outscope']
     
-    def update_program_scope(self, program_name, inscope, outscope):
-        r = self.requests_session.get(self.BBRF_API+'/'+program_name, headers={"Authorization": self.auth})
-        if 'error' in r.json():
-            raise Exception(r.json()['error'])
-        program = r.json()
+    def update_program_scope(self, program_name, inscope, outscope, program=None):
+        self.debug('updating program scope')
+        if not program:
+            r = self.requests_session.get(self.BBRF_API+'/'+program_name, headers={"Authorization": self.auth})
+            if 'error' in r.json():
+                raise Exception('BBRF server error: '+r.json()['error'])
+            program = r.json()
         # only update if different!
         if program['inscope'] != inscope or program['outscope'] != outscope:
             program['inscope'] = inscope
             program['outscope'] = outscope
             r = self.requests_session.put(self.BBRF_API+'/'+program_name+'?rev='+program['_rev'], json.dumps(program), headers={"Authorization": self.auth})
             if 'error' in r.json():
-                raise Exception(r.json()['error'])
+                raise Exception('BBRF server error: '+r.json()['error'])
             
-    def get_program_blacklist(self, program_name=None):
-        r = self.requests_session.get(self.BBRF_API+'/'+program_name, headers={"Authorization": self.auth})
-        if 'error' in r.json():
-            raise Exception(r.json()['error'])
-        if 'blacklist' not in r.json():
+    def get_program_blacklist(self, program_name=None, doc=None):
+        self.debug('getting program blacklist')
+        if not doc:
+            r = self.requests_session.get(self.BBRF_API+'/'+program_name, headers={"Authorization": self.auth})
+            doc = r.json()
+        if 'error' in doc:
+            raise Exception('BBRF server error: '+r.json()['error'])
+        if 'blacklist' not in doc:
             return []
-        return r.json()['blacklist']
+        return doc['blacklist']
     
     def update_program_blacklist(self, program_name, blacklist):
+        self.debug('updating program blacklist')
         r = self.requests_session.get(self.BBRF_API+'/'+program_name, headers={"Authorization": self.auth})
         if 'error' in r.json():
-            raise Exception(r.json()['error'])
+            raise Exception('BBRF server error: '+r.json()['error'])
         program = r.json()
         program['blacklist'] = blacklist
         r = self.requests_session.put(self.BBRF_API+'/'+program_name+'?rev='+program['_rev'], json.dumps(program), headers={"Authorization": self.auth})
         if 'error' in r.json():
-            raise Exception(r.json()['error'])
+            raise Exception('BBRF server error: '+r.json()['error'])
             
     '''
     Get a list of all agents.
     '''
     def get_agents(self):
+        self.debug('getting agents')
         r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/agents', headers={"Authorization": self.auth})
         if 'error' in r.json():
-            raise Exception(r.json()['error'])
+            raise Exception('BBRF server error: '+r.json()['error'])
         return r.json()['rows']
     
     '''
     Register a new agent.
     '''
     def register_agent(self, name):
+        self.debug('registering agent')
         r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/agents', headers={"Authorization": self.auth})
         if 'error' in r.json():
-            raise Exception(r.json()['error'])
+            raise Exception('BBRF server error: '+r.json()['error'])
         return [r['key'] for r in r.json()['rows']]
     
     '''
     Add a list of documents to a program in bulk.
     '''
     def add_documents(self, doctype, identifiers, program_name, source=None, tags=[]):
+        self.debug('adding document in bulk')
         if doctype not in self.doctypes:
             raise Exception('This doctype is not supported')
         # Create documents in bulk
@@ -240,8 +278,7 @@ class BBRFApi:
                 doc['source'] = source
                 
             if tags:
-                tag_map = {x.split(':', 1)[0]: x.split(':', 1)[1] for x in tags}
-                doc['tags'] = tag_map
+                doc['tags'] = self.process_tags(tags)
                 
             bulk['docs'].append(doc)
         
@@ -257,7 +294,7 @@ class BBRFApi:
         )
         
         #if 'error' in r.json():
-        #    raise Exception(r.json()['error'])
+        #    raise Exception('BBRF server error: '+r.json()['error'])
     
     '''
     Get the identifier of a document based on a set of properties defined in propmap
@@ -289,7 +326,7 @@ class BBRFApi:
         r = self.requests_session.get(self.BBRF_API+'/'+requests.utils.quote(document, safe=''), headers={"Authorization": self.auth})
         # print(r.json())
         if 'error' in r.json() and r.json()['error'] != 'not_found':
-            raise Exception(r.json()['error'])
+            raise Exception('BBRF server error: '+r.json()['error'])
         elif 'error' in r.json() and r.json()['error'] == 'not_found':
             return
         if 'type' in r.json() and not r.json()['type'] == doctype:
@@ -298,7 +335,7 @@ class BBRFApi:
         if '_rev' in r.json():
             r = self.requests_session.delete(self.BBRF_API+'/'+requests.utils.quote(document, safe='')+'?rev='+r.json()['_rev'], headers={"Authorization": self.auth})
             if 'error' in r.json() and r.json()['error'] != 'not_found':
-                raise Exception(r.json()['error'])
+                raise Exception('BBRF server error: '+r.json()['error'])
                 
     '''
     Return a raw version of a document by id
@@ -319,7 +356,7 @@ class BBRFApi:
             raise Exception('This doctype is not supported')
         r = self.requests_session.get(self.BBRF_API+'/'+requests.utils.quote(document, safe=''), headers={"Authorization": self.auth})
         if 'error' in r.json() and r.json()['error'] != 'not_found':
-            raise Exception(r.json()['error'])
+            raise Exception('BBRF server error: '+r.json()['error'])
         elif 'error' in r.json() and r.json()['error'] == 'not_found':
             return
         if 'type' in r.json() and not r.json()['type'] == doctype:
@@ -361,7 +398,7 @@ class BBRFApi:
                 )
                 
                 if 'error' in r.json():
-                    raise Exception(r.json()['error'])
+                    raise Exception('BBRF server error: '+r.json()['error'])
                 
                 return document
         
@@ -369,8 +406,8 @@ class BBRFApi:
     Update documents in bulk
     The provided batch_updates need to be a dict of updates mapping the id to the dict of updates
     '''
-    def update_documents(self, doctype, batch_updates):
-
+    def update_documents(self, doctype, batch_updates, append_tags=False):
+        self.debug('updating documents in bulk')
         # first, get the latest revisions of each of the listed documents
         r = self.requests_session.post(self.BBRF_API+'/_all_docs?include_docs=true', json.dumps({'keys': [x for x in batch_updates.keys()]}), headers={"Authorization": self.auth, 'Content-Type': 'application/json'})
         
@@ -382,7 +419,6 @@ class BBRFApi:
         for x in current.keys():
             if not self.docs_are_equal(current[x], updates[x]):
                 to_be_updated.append(updates[x])
-        
         # TODO:
         # check current doctype against document.type
         for updates in to_be_updated:
@@ -404,7 +440,6 @@ class BBRFApi:
                     pass # this is fine, will happen e.g. when adding a status code or content_length for the first time
                 else:
                     if not type(original_document[prop]) is type(updates[prop]):
-                        print(type(original_document[prop]))
                         print('[Error] The updated property '+prop+' doesn\'t have the right type. Cannot update '+updates['_id'])
                         updates = {}
                         continue
@@ -423,28 +458,45 @@ class BBRFApi:
                     if type(original_document[prop]) is dict:
                         new_dict = original_document[prop]
                         for key in updates[prop]:
-                            new_dict[key] = updates[prop][key]
+                            self.debug(prop)
+                            self.debug(str(append_tags))
+                            if prop is 'tags' and append_tags:
+                                # append the new value or list to the existing list
+                                if not key in new_dict:
+                                    new_dict[key] = updates[prop][key]
+                                elif type(new_dict[key]) is list:
+                                    new_dict[key].extend(updates[prop][key] if type(updates[prop][key]) is list else [updates[prop][key]])
+                                else: # already existed with a single value
+                                    updates[prop][key] = updates[prop][key] if type(updates[prop][key]) is list else [updates[prop][key]]
+                                    updates[prop][key].extend([new_dict[key]])
+                                    new_dict[key] = updates[prop][key]
+                                # remove duplicates
+                                if type(new_dict[key]) is list:
+                                    new_dict[key] = list(set(new_dict[key]))
+                            else:
+                                # overwrite whatever values we have with the new value or list
+                                new_dict[key] = updates[prop][key]
                         
                         # filter out empty values
                         updates[prop] = {x: new_dict[x] for x in new_dict if new_dict[x] and len(new_dict[x]) > 0}
                                 
         
         # now bulk update all documents with changes!
-        r = self.requests_session.post(
-            self.BBRF_API+'/_bulk_docs',
-            json.dumps({'docs': to_be_updated}),
-            headers={"Authorization": self.auth, 'Content-Type': 'application/json'}
-        )
-        if 'error' in r.json():
-            raise Exception(r.json()['error'])
-            
-        return [x['_id'] for x in to_be_updated]
+        if len(to_be_updated) > 0:
+            r = self.requests_session.post(
+                self.BBRF_API+'/_bulk_docs',
+                json.dumps({'docs': to_be_updated}),
+                headers={"Authorization": self.auth, 'Content-Type': 'application/json'}
+            )
+            if 'error' in r.json():
+                raise Exception('BBRF server error: '+r.json()['error'])
+
+            return [x['_id'] for x in to_be_updated]
         
     '''
     return true if docs are identical, false if there are differences
     '''
     def docs_are_equal(self, current, updated, ignore = ['_id', '_rev', 'program', 'type'], check_lists = True):
-        
         current = {k: current[k] for k in current if k not in ignore}
         updated = {k: updated[k] for k in updated if k not in ignore}
         
@@ -555,7 +607,7 @@ class BBRFApi:
     def run_agent(self, agent_name, program_name):
         r = self.requests_session.get(self.BBRF_API+'/agents_api_gateway', headers={"Authorization": self.auth})
         if 'error' in r.json():
-            raise Exception(r.json()['error'])
+            raise Exception('BBRF server error: '+r.json()['error'])
         gateway = r.json()['url']
         
         return requests.get(gateway+agent_name+'?program='+program_name).text
@@ -581,7 +633,7 @@ class BBRFApi:
             agent = {"type": "agent", "name": agent_name}
             r = self.requests_session.put(self.BBRF_API+'/agent_'+agent_name, json.dumps(agent), headers={"Authorization": self.auth})
         if 'error' in r.json():
-            raise Exception(r.json()['error'])
+            raise Exception('BBRF server error: '+r.json()['error'])
     
     '''
     Push an alert into the DB
@@ -597,7 +649,7 @@ class BBRFApi:
         }
         r = self.requests_session.post(self.BBRF_API, json.dumps(alert), headers={"Content-Type": "application/json", "Authorization": self.auth})
         if 'error' in r.json():
-            raise Exception(r.json()['error'])
+            raise Exception('BBRF server error: '+r.json()['error'])
         
     '''
     List scopes across programs using _view/scope - does not support filtering by program.
@@ -645,7 +697,7 @@ class BBRFApi:
             raise Exception('This doctype is not supported')
         r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/search_tags?key=["'+key+'", "'+value+'"]', headers={"Authorization": self.auth})
         if 'error' in r.json():
-            raise Exception(r.json()['error'])
+            raise Exception('BBRF server error: '+r.json()['error'])
             
         results = r.json()['rows']
         
@@ -658,6 +710,23 @@ class BBRFApi:
         return [x['value'][1] for x in results]
     
 
+    def process_tags(self, tags, append_tags=False):
+        '''
+        Process a list of -t <name:value>... and return 
+        as a dict of scalars or arrays.
+        '''
+        tagmap = {}
+        for x in tags:
+            k, v = x.split(':', 1)
+            if k not in tagmap:
+                tagmap[k] = v if not append_tags else [v]
+            else:
+                if type(tagmap[k]) is list:
+                    tagmap[k].extend([v])
+                else:
+                    tagmap[k] = [v, tagmap[k]]
+        return tagmap
+    
     '''
     Get a list of documents based on a search term by tags, filtered by doctype
     '''
@@ -669,7 +738,7 @@ class BBRFApi:
         elif before_after == 'after':
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/search_tags?startkey=["'+key+'","'+value+'"]&endkey=["'+key+'ZZZZZ"]&', headers={"Authorization": self.auth})
         if 'error' in r.json():
-            raise Exception(r.json()['error'])
+            raise Exception('BBRF server error: '+r.json()['error'])
             
         results = r.json()['rows']
         
@@ -680,3 +749,55 @@ class BBRFApi:
             results = [x for x in results if x['value'][2] == program]
         
         return [x['value'][1] for x in results]
+    
+    def get_tags(self, tagname, program_name=None):
+        filter_name = 'key="'+tagname+'"' if tagname else ''
+        r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/tags?'+filter_name, headers={"Authorization": self.auth})
+        results = r.json()['rows']
+        
+        if tagname:
+            return [x['value'][0]+' '+x['value'][1] for x in results if not(not(program_name)) == (x['value'][2] == program_name)]
+        else:
+            return set([x['key'] for x in results if not(not(program_name)) == (x['value'][2] == program_name)])
+    
+    def server_upgrade(self, admin, password):
+        '''
+        Upgrade server to the latest views and ensure access rights are correct (see https://github.com/honoki/bbrf-server/pull/2)
+        '''
+        print('Downloading latest views from https://github.com/honoki/bbrf-server')
+        r = self.requests_session.get('https://raw.githubusercontent.com/honoki/bbrf-server/main/views.json')
+        views = r.json()
+        print('Comparing to current views...')
+        admin_auth = 'Basic '+base64.b64encode((admin+':'+password).encode('utf-8')).decode('utf-8')
+        r = self.requests_session.get(self.BBRF_API+'/_design/bbrf', headers={"Authorization": admin_auth})
+        if r.status_code == 401:
+            print('[Error] Wrong administrator credentials provided.')
+            return
+        rev = r.json()['_rev']
+        if not self.docs_are_equal(r.json(), views):
+            print('Pushing views to server...')
+            views['_rev'] = rev
+            r = self.requests_session.put(self.BBRF_API+'/_design/bbrf', json.dumps(views), headers={"Authorization": admin_auth, 'Content-Type': 'application/json'})
+            if r.status_code == 201:
+                print('Server upgrade complete, please allow a few minutes for all reindexing to complete. View the progress on '+self.BBRF_API.replace('/bbrf','')+'/_utils/#/activetasks')
+            else:
+                print('Unexpected error: '+str(r.status_code))
+                print(r.text)
+        else:
+            print('Server already up to date.')
+        print('Validating user access rights...')
+        r = self.requests_session.get(self.BBRF_API+'/access-test') 
+        if r.status_code == 401:
+            print('No issues detected!')
+        else:
+            print('CRITICAL! Unauthorized access to the database is enabled. Fixing configuration...')
+            r = self.requests_session.put(self.BBRF_API+'/_security', '{"admins":{"names":[]},"members":{"names":["bbrf"]}}', headers={"Authorization": admin_auth, 'Content-Type': 'application/json'})
+            if r.status_code == 200:
+                print('Configuration corrected, all\'s good!')
+            else:
+                print('Something went wrong when trying to correct the misconfiguration. Please run the following to fix manually:')
+                print('curl -ik -X PUT "'+self.BBRF_API+'/_security" -u admin:password -d \'\'')
+    
+    def debug(self, msg):
+        if self.do_debug:
+            print('[DEBUG] '+msg)

@@ -3,26 +3,26 @@
 """BBRF Client
 
 Usage:
-  bbrf (new|use|disable|enable) <program> [ -t <tag>... ]
-  bbrf programs [--show-disabled]
+  bbrf (new|use|disable|enable) <program> [ -t key:value ]...
+  bbrf programs [--show-disabled --show-empty-scope]
   bbrf programs where <tag_name> is [before | after] <value>
-  bbrf program ([active] | update [ <program>... | - ] [ -t <tag>... ])
+  bbrf program ( active | update ( <program>... | - ) -t key:value... [ --append-tags ])
   bbrf domains [--view <view> (-p <program> | --all)]
   bbrf domains where <tag_name> is [before | after] <value> [-p <program> | --all]
-  bbrf domain (add|remove|update) ( - | <domain>...) [-p <program> -s <source> --show-new -t <tag>...]
+  bbrf domain (add|remove|update) ( - | <domain>...) [-p <program> -s <source> --show-new (-t key:value... [ --append-tags ])]
   bbrf ips [ --filter-cdns (-p <program> | --all)]
   bbrf ips where <tag_name> is [before | after] <value> [-p <program> | --all]
-  bbrf ip (add|remove|update) ( - | <ip>...) [-p <program> -s <source> --show-new -t <tag>...]
-  bbrf scope (in|out) [(--wildcard [--top])] ([-p <program>] | (--all [--show-disabled]))
-  bbrf scope filter (in | out) [(--wildcard [--top])] ([-p <program>] | (--all [--show-disabled]))
+  bbrf ip (add|remove|update) ( - | <ip>...) [ -p <program> -s <source> --show-new (-t key:value... [ --append-tags ])]
+  bbrf scope (in|out) [(--wildcard [--top])] [ (-p <program>) | (--all [--show-disabled]) ]
+  bbrf scope filter (in | out) [(--wildcard [--top])] [ (-p <program>) | (--all [--show-disabled]) ]
   bbrf (inscope|outscope) (add|remove) (- | <element>...) [-p <program>]
-  bbrf urls (-d <hostname> | [-p <program>] | --all)
+  bbrf urls [ -d <hostname> | ( -p <program> | --all ) ] [ --with-query ]
   bbrf urls where <tag_name> is [before | after] <value> [-p <program> | --all]
-  bbrf url add ( - | <url>...) [-d <hostname> -s <source> -p <program> --show-new -t <tag>...]
+  bbrf url add ( - | <url>...) [-d <hostname> -s <source> -p <program> --show-new (-t key:value... [ --append-tags ])]
   bbrf url remove ( - | <url>...)
   bbrf services [-p <program> | --all]
   bbrf services where <tag_name> is [before | after] <value> [-p <program> | --all]
-  bbrf service add ( - | <service>...) [-s <source> -p <program> --show-new -t <tag>...]
+  bbrf service add ( - | <service>...) [-s <source> -p <program> --show-new (-t key:value... [ --append-tags ]) ]
   bbrf service remove ( - | <service>...)
   bbrf blacklist (add|remove) ( - | <element>...) [-p <program>]
   bbrf agents
@@ -30,17 +30,21 @@ Usage:
   bbrf run <agent> [-p <program>]
   bbrf show <document>
   bbrf listen
-  bbrf alert ( - | <message>) [-s <source>]
+  bbrf alert ( - | <message>) [ -s <source> ]
+  bbrf tags [<name>] [ -p <program> | --all ]
+  bbrf server upgrade [-y]
 
 Options:
-  -h --help     Show this screen.
-  -p <program>  Select a program to limit the command to. Not required when the command "use" has been run before.
-  -t <tag>      Specify one or more custom properties (tags) to add to your document. Format as key:value
-  -s <source>   Provide an optional source string to store information about the source of the modified data.
-  -v --version  Show the program version
-  -d <hostname> Explicitly specify the hostname of a URL in case of relative paths
-  --show-new    Print new unique values that were added to the database, and didn't already exist
-  --all         Specify to get information across all programs. Incompatible with the -p flag
+  -h --help          Show this screen.
+  -p <program>       Select a program to limit the command to. Not required when the command "use" has been run before.
+  -t key:value       Specify one or more custom tags to add to your document. Format as key:value
+  -s <source>        Provide an optional source string to store information about the source of the modified data.
+  -v --version       Show the program version
+  -d <hostname>      Explicitly specify the hostname of a URL in case of relative paths
+  -n, --show-new     Print new unique values that were added to the database, and didn't already exist
+  -A, --all          Specify to get information across all programs. Incompatible with the -p flag
+  -a, --append-tags  If a tag with the same name already exists on the document, make an array and append the new value(s)
+  -q, --with-query   When listing URLs, show all URLs including queries
 """
 
 import os
@@ -53,10 +57,10 @@ from docopt import docopt
 
 CONFIG_FILE = '~/.bbrf/config.json'
 # Thanks https://regexr.com/3au3g
-REGEX_DOMAIN = re.compile('^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
+REGEX_DOMAIN = re.compile('^(?:[a-z0-9_](?:[a-z0-9-_]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
 # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
 REGEX_IP = re.compile('^([0-9]{1,3}\.){3}[0-9]{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))?$')
-VERSION = '1.1.0'
+VERSION = '1.1.1'
 
 class BBRFClient:
     config = {}
@@ -81,8 +85,6 @@ class BBRFClient:
             exit('[ERROR] Required configuration was not found: password')
         elif 'couchdb' not in self.config:
             exit('[ERROR] Required configuration was not found: couchdb')
-        #elif 'slack_token' not in self.config:
-        #    exit('[WARNING] Optional configuration was not found: slack_token')
         
         else:
             self.api = bbrf_api.BBRFApi(
@@ -91,7 +93,8 @@ class BBRFClient:
                 self.config['password'],
                 slack_token=self.config['slack_token'] if 'slack_token' in self.config else None,
                 discord_webhook = self.config['discord_webhook'] if 'discord_webhook' in self.config else None,
-                ignore_ssl_errors = self.config['ignore_ssl_errors'] if 'ignore_ssl_errors' in self.config else None
+                ignore_ssl_errors = self.config['ignore_ssl_errors'] if 'ignore_ssl_errors' in self.config else None,
+                debug = self.config['debug'] if 'debug' in self.config else False
             )
 
     def new_program(self):
@@ -100,8 +103,8 @@ class BBRFClient:
         # and add it to the db
         self.api.create_new_program(self.get_program(), tags=self.arguments['-t'])
 
-    def list_programs(self, show_disabled):
-        return self.api.get_programs(show_disabled)
+    def list_programs(self, show_disabled, show_empty_scope):
+        return self.api.get_programs(show_disabled, show_empty_scope=show_empty_scope)
     
     # updating programs this way only supports tags for now
     def update_programs(self, programs):
@@ -111,9 +114,9 @@ class BBRFClient:
             
             if(self.arguments['-t'] and len(self.arguments['-t']) > 0):
                 update_programs[program] = {}
-                update_programs[program]['tags'] = {x.split(':', 1)[0]: x.split(':', 1)[1] for x in self.arguments['-t']}
+                update_programs[program]['tags'] = self.api.process_tags(self.arguments['-t'])
             
-        updated = self.api.update_documents('program', {program: update_programs[program] for program in update_programs.keys()})
+        updated = self.api.update_documents('program', {program: update_programs[program] for program in update_programs.keys()}, append_tags=self.arguments['--append-tags'])
     
     def list_agents(self):
         return [r['key'] for r in self.api.get_agents()]
@@ -141,7 +144,7 @@ class BBRFClient:
         pro = self.arguments['<program>']
         if type(pro) is list:
             pro = pro[0]
-        if check_exists and pro not in self.list_programs(True):
+        if check_exists and pro not in self.list_programs(True, True):
             raise Exception('This program does not exist.')
         self.config['program'] = pro
     
@@ -180,9 +183,9 @@ class BBRFClient:
     def get_scope(self):   
         if not self.arguments['--all']:
             if self.arguments['in']:
-                (scope, _) = self.api.get_program_scope(self.get_program())
+                (_, scope, _) = self.api.get_program_scope(self.get_program())
             elif self.arguments['out']:
-                (_, scope) = self.api.get_program_scope(self.get_program())
+                (_, _, scope) = self.api.get_program_scope(self.get_program())
         else: # get scope across all programs, making use of _view/scope
             if self.arguments['in']:
                 scope = self.api.get_scope('in', 'active' if not self.arguments['--show-disabled'] else 'inactive')
@@ -227,12 +230,12 @@ class BBRFClient:
     If a line includes a : delimiter, strip off the ips and add them to the database
     '''
     def add_domains(self, domains):
-        (inscope, outscope) = self.api.get_program_scope(self.get_program())
+        (copy, inscope, outscope) = self.api.get_program_scope(self.get_program())
         add_domains = {}
         add_inscope = []
         
         # Keep a copy of the blacklist for reference
-        blacklist = self.get_blacklist()
+        blacklist = self.get_blacklist(copy=copy)
         
         for domain in domains:
             blacklisted_ip = False
@@ -287,9 +290,10 @@ class BBRFClient:
         
         # add all new scope at once to drastically reduce runtime of large input
         if len(add_inscope) > 0:
-            self.add_inscope(add_inscope)
+            self.add_inscope(add_inscope, passalong={'doc':copy, 'inscope':inscope, 'outscope':outscope})
         
-        success, _ = self.api.add_documents('domain', add_domains, self.get_program(), source=self.arguments['-s'], tags=self.arguments['-t'])
+        if len(add_domains) > 0:
+            success, _ = self.api.add_documents('domain', add_domains, self.get_program(), source=self.arguments['-s'], tags=self.arguments['-t'])
         
         if self.arguments['--show-new']:
             return ["[NEW] "+x for x in success if x]
@@ -338,9 +342,9 @@ class BBRFClient:
                 update_domains[domain] = {"ips": ips}
             
             if(self.arguments['-t'] and len(self.arguments['-t']) > 0):
-                update_domains[domain]['tags'] = {x.split(':', 1)[0]: x.split(':', 1)[1] for x in self.arguments['-t']}
+                update_domains[domain]['tags'] = self.api.process_tags(self.arguments['-t'])
         
-        updated = self.api.update_documents('domain', {domain: update_domains[domain] for domain in update_domains.keys()})
+        updated = self.api.update_documents('domain', {domain: update_domains[domain] for domain in update_domains.keys()}, append_tags=self.arguments['--append-tags'])
         
         if self.arguments['--show-new']:
             return [ "[UPDATED] "+x for x in updated if x]
@@ -421,9 +425,9 @@ class BBRFClient:
                 update_ips[ip] = {"domains": updated_domains}
             
             if(self.arguments['-t'] and len(self.arguments['-t']) > 0):
-                update_ips[ip]['tags'] = {x.split(':', 1)[0]: x.split(':', 1)[1] for x in self.arguments['-t']}
+                update_ips[ip]['tags'] = self.api.process_tags(self.arguments['-t'])
             
-        updated = self.api.update_documents('ip', {ip: update_ips[ip] for ip in update_ips.keys()})
+        updated = self.api.update_documents('ip', {ip: update_ips[ip] for ip in update_ips.keys()}, append_tags=self.arguments['--append-tags'])
         
         if self.arguments['--show-new']:
             return [ "[UPDATED] "+x for x in updated if x]
@@ -454,7 +458,7 @@ class BBRFClient:
     '''
     def add_urls(self, urls):
         
-        (inscope, outscope) = self.api.get_program_scope(self.get_program())
+        (_, inscope, outscope) = self.api.get_program_scope(self.get_program())
         add_urls = {}
         
         for url in urls:
@@ -548,8 +552,8 @@ class BBRFClient:
         # but first add the tags to the document in case they need to be updated too
         if(self.arguments['-t'] and len(self.arguments['-t']) > 0):
             for url in failed:
-                add_urls[url]['tags'] = {x.split(':', 1)[0]: x.split(':', 1)[1] for x in self.arguments['-t']}
-        updated = self.api.update_documents('url', {url: add_urls[url] for url in failed})
+                add_urls[url]['tags'] = self.api.process_tags(self.arguments['-t'])
+        updated = self.api.update_documents('url', {url: add_urls[url] for url in failed}, append_tags=self.arguments['--append-tags'])
         
         
             
@@ -625,66 +629,87 @@ class BBRFClient:
         # but first add the tags to the document in case they need to be updated too
         if(self.arguments['-t'] and len(self.arguments['-t']) > 0):
             for sid in failed:
-                add_services[sid]['tags'] = {x.split(':', 1)[0]: x.split(':', 1)[1] for x in self.arguments['-t']}
-            print(add_services)
+                add_services[sid]['tags'] = self.api.process_tags(self.arguments['-t'])
                 
-        updated = self.api.update_documents('service', {sid: add_services[sid] for sid in failed})
+        updated = self.api.update_documents('service', {sid: add_services[sid] for sid in failed}, append_tags=self.arguments['--append-tags'])
         
         if self.arguments['--show-new']:
             return [ "[UPDATED] "+x for x in updated if x] + ["[NEW] "+x for x in success if x]
         
     
     def disable_program(self, program):
-        if program not in self.list_programs(True):
-            raise Exception('The specified program does not exist.')
         self.api.update_document("program", program, {"disabled":True})
         
     def enable_program(self, program):
-        if program not in self.list_programs(True):
-            raise Exception('The specified program does not exist.')
         self.api.update_document("program", program, {"disabled":False})
         
-            
-    def add_inscope(self, elements):
-        (inscope, outscope) = self.api.get_program_scope(self.get_program())
+    def add_inscope(self, elements, passalong={}):
+        doc = passalong['doc'] if 'doc' in passalong else None
+        inscope = passalong['inscope'] if 'inscope' in passalong else None
+        outscope = passalong['outscope'] if 'outscope' in passalong else None
+        
+        if not doc or not inscope or not outscope:
+            (doc, inscope, outscope) = self.api.get_program_scope(self.get_program())
+        changed = False
         
         for e in elements:
             if e not in inscope:
-                inscope.append(e)
+                if REGEX_DOMAIN.match(e) or e.startswith('*.') and REGEX_DOMAIN.match(e[2:]):
+                    changed = True
+                    inscope.append(e)
         
-        self.api.update_program_scope(self.get_program(), inscope, outscope)
+        if changed:
+            self.api.update_program_scope(self.get_program(), inscope, outscope, program=doc)
     
     def remove_inscope(self, elements):
-        (inscope, outscope) = self.api.get_program_scope(self.get_program())
+        (doc, inscope, outscope) = self.api.get_program_scope(self.get_program())
+        
+        changed = False
         
         for e in elements:
-            if e in inscope:
+            if e and e in inscope:
+                changed = True
                 inscope.remove(e)
                 
-        self.api.update_program_scope(self.get_program(), inscope, outscope)
+        if changed:
+            self.api.update_program_scope(self.get_program(), inscope, outscope, program=doc)
         
     def add_outscope(self, elements):
-        (inscope, outscope) = self.api.get_program_scope(self.get_program())
+        (doc, inscope, outscope) = self.api.get_program_scope(self.get_program())
+        
+        changed = False
         
         for e in elements:
             if e not in outscope:
-                outscope.append(e)
+                if REGEX_DOMAIN.match(e) or e.startswith('*.') and REGEX_DOMAIN.match(e[2:]):
+                    changed = True
+                    outscope.append(e)
         
-        self.api.update_program_scope(self.get_program(), inscope, outscope)
+        if changed:
+            self.api.update_program_scope(self.get_program(), inscope, outscope, program=doc)
     
     def remove_outscope(self, elements):
-        (inscope, outscope) = self.api.get_program_scope(self.get_program())
+        (doc, inscope, outscope) = self.api.get_program_scope(self.get_program())
+        
+        changed = False
         
         for e in elements:
-            if e in outscope:
+            if e and e in outscope:
+                changed = True
                 outscope.remove(e)
                 
-        self.api.update_program_scope(self.get_program(), inscope, outscope)
+        if changed:
+            self.api.update_program_scope(self.get_program(), inscope, outscope, program=doc)
     
     def list_ips(self, list_all = False):
         if list_all:
             return self.api.get_ips_by_program_name()
         return self.api.get_ips_by_program_name(self.get_program())
+    
+    def list_ips_no_cdn(self, list_all = False):
+        if list_all:
+            return self.api.get_ips_by_program_name(filter_cdn=True)
+        return self.api.get_ips_by_program_name(program_name=self.get_program(), filter_cdn=True)
     
     def list_domains(self, list_all = False):
         if list_all:
@@ -693,13 +718,13 @@ class BBRFClient:
     
     def list_urls(self, by, key = False):
         if by == "hostname":
-            return self.api.get_urls_by_hostname(key)
+            return self.api.get_urls_by_hostname(key, with_query=self.arguments['--with-query'])
         elif by == "program":
-            return self.api.get_urls_by_program(key)
+            return self.api.get_urls_by_program(key, with_query=self.arguments['--with-query'])
         elif by == "all":
-            return self.api.get_urls_by_program() # An empty key will return all results
+            return self.api.get_urls_by_program(with_query=self.arguments['--with-query']) # An empty key will return all results
         else:
-            return self.api.get_urls_by_program(self.get_program())
+            return self.api.get_urls_by_program(self.get_program(), with_query=self.arguments['--with-query'])
         
     def list_services(self, list_all = False):
         if list_all:
@@ -711,8 +736,8 @@ class BBRFClient:
             return self.api.get_documents_view(None, doctype, view)
         return self.api.get_documents_view(self.get_program(), doctype, view)
     
-    def get_blacklist(self):
-        return self.api.get_program_blacklist(self.get_program())
+    def get_blacklist(self, copy=None):
+        return self.api.get_program_blacklist(self.get_program(), doc=copy)
     
     def add_blacklist(self, elements):
         blacklist = self.get_blacklist()
@@ -755,17 +780,29 @@ class BBRFClient:
             return self.api.search_tags_between(self.arguments['<tag_name>'], self.arguments['<value>'], 'after', doctype, program_name)
         else:
             return self.api.search_tags(self.arguments['<tag_name>'], self.arguments['<value>'], doctype, self.arguments['-p'])
-
+    
+    def list_tags(self, tagname):
+        # Always use the active program unless --all is specified
+        program_name = self.get_program()
+        if(self.arguments['--all']):
+            program_name = False
+        return self.api.get_tags(tagname, program_name)
+        
+    def debug(self, msg):
+        if 'debug' in self.config and self.config['debug']:
+            print('[DEBUG] '+msg)
+        
     def run(self):
         
         import pprint
         pp = pprint.PrettyPrinter(indent=4)
-        # pp.pprint(self.arguments)
+        #pp.pprint(self.arguments)
         
-        try:
-            self.load_config()
-        except Exception:
-            print('[WARNING] Could not read config file - make sure it exists and is readable')
+        if not self.config:
+            try:
+                self.load_config()
+            except Exception:
+                print('[WARNING] Could not read config file - make sure it exists and is readable')
 
         if self.arguments['new']:
             self.new_program()
@@ -782,7 +819,7 @@ class BBRFClient:
         if self.arguments['programs']:
             if self.arguments['where']:
                 return self.search_tags("program")
-            return self.list_programs(self.arguments['--show-disabled'])
+            return self.list_programs(self.arguments['--show-disabled'], self.arguments['--show-empty-scope'])
             
         if self.arguments['program']:
             if self.arguments['active']:
@@ -819,19 +856,7 @@ class BBRFClient:
 
         if self.arguments['ips']:
             if self.arguments['--filter-cdns']:
-                ips = self.list_ips(self.arguments['--all'])
-                with open(os.path.expanduser('~/.bbrf/cidr-filter.txt')) as f:
-                    cidrs = f.read().splitlines()
-                filtered = []
-                for ip in ips:
-                    cdn = False
-                    for cidr in cidrs:
-                        if self.ip_in_cidr(ip, cidr):
-                            cdn = True
-                            break
-                    if not cdn:
-                        filtered.append(ip)
-                return filtered
+                return self.list_ips_no_cdn(self.arguments['--all'])
             elif self.arguments['where']:
                 return self.search_tags("ip")
             return self.list_ips(self.arguments['--all'])
@@ -973,6 +998,15 @@ class BBRFClient:
                 return [ line for line in sys.stdin.read().split('\n') if self.matches_scope(line, self.get_scope()) ]
             else:
                 return self.get_scope()
+            
+        if self.arguments['tags']:
+            return self.list_tags(self.arguments['<name>'])
+        
+        if self.arguments['server']:
+            import getpass
+            admin = input('Admin username: ')
+            password = getpass.getpass('Password: ')
+            self.api.server_upgrade(admin, password)
 
         try:
             self.save_config()
@@ -981,14 +1015,16 @@ class BBRFClient:
             
 
 def main():
-    arguments = docopt(__doc__, version=VERSION)
-    bbrf = BBRFClient(arguments)
-    result = bbrf.run()
-    if result:
-        if type(result) is list:
-            print("\n".join(result))
-        else:
-            print(result)
+    try:
+        arguments = docopt(__doc__, version=VERSION)
+        result = BBRFClient(arguments).run()
+        if result:
+            if type(result) is list:
+                print("\n".join(result))
+            else:
+                print(result)
+    except Exception as e:
+        print('[ERROR] '+str(e))
             
 if __name__ == '__main__':
     main()
