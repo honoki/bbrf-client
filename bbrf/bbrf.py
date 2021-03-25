@@ -3,48 +3,49 @@
 """BBRF Client
 
 Usage:
-  bbrf (new|use|disable|enable) <program> [ -t key:value ]...
-  bbrf programs [--show-disabled --show-empty-scope]
-  bbrf programs where <tag_name> is [before | after] <value>
-  bbrf program ( active | update ( <program>... | - ) -t key:value... [ --append-tags ])
-  bbrf domains [--view <view> (-p <program> | --all)]
-  bbrf domains where <tag_name> is [before | after] <value> [-p <program> | --all]
-  bbrf domain (add|remove|update) ( - | <domain>...) [-p <program> -s <source> --show-new (-t key:value... [ --append-tags ])]
-  bbrf ips [ --filter-cdns (-p <program> | --all)]
-  bbrf ips where <tag_name> is [before | after] <value> [-p <program> | --all]
-  bbrf ip (add|remove|update) ( - | <ip>...) [ -p <program> -s <source> --show-new (-t key:value... [ --append-tags ])]
-  bbrf scope (in|out) [(--wildcard [--top])] [ (-p <program>) | (--all [--show-disabled]) ]
-  bbrf scope filter (in | out) [(--wildcard [--top])] [ (-p <program>) | (--all [--show-disabled]) ]
-  bbrf (inscope|outscope) (add|remove) (- | <element>...) [-p <program>]
-  bbrf urls [ -d <hostname> | ( -p <program> | --all ) ] [ --with-query ]
-  bbrf urls where <tag_name> is [before | after] <value> [-p <program> | --all]
-  bbrf url add ( - | <url>...) [-d <hostname> -s <source> -p <program> --show-new (-t key:value... [ --append-tags ])]
-  bbrf url remove ( - | <url>...)
-  bbrf services [-p <program> | --all]
-  bbrf services where <tag_name> is [before | after] <value> [-p <program> | --all]
-  bbrf service add ( - | <service>...) [-s <source> -p <program> --show-new (-t key:value... [ --append-tags ]) ]
-  bbrf service remove ( - | <service>...)
-  bbrf blacklist (add|remove) ( - | <element>...) [-p <program>]
+  bbrf ( new | use | disable | enable ) <program> [ -t key:value ]...
+  bbrf programs [ --show-disabled --show-empty-scope ]
+  bbrf programs where <tag_name> is [ before | after ] <value>
+  bbrf program ( active | update ( <program>... | - ) -t key:value... [--append-tags])
+  bbrf domains [ --view <view> ( -p <program> | ( --all [--show-disabled] ) ) ]
+  bbrf domains where <tag_name> is [ before | after ] <value> [ -p <program> | ( --all [--show-disabled] ) ]
+  bbrf domain ( add | remove | update ) ( - | <domain>... ) [ -p <program> -s <source> --show-new ( -t key:value... [--append-tags] ) ]
+  bbrf ips [ --filter-cdns ( -p <program> | ( --all [--show-disabled] ) ) ]
+  bbrf ips where <tag_name> is [ before | after ] <value> [ -p <program> | ( --all [--show-disabled] ) ]
+  bbrf ip ( add | remove | update ) ( - | <ip>... ) [ -p <program> -s <source> --show-new ( -t key:value... [--append-tags] ) ]
+  bbrf scope ( in | out ) [ (--wildcard [--top] ) ] [ ( -p <program> ) | ( --all [--show-disabled] ) ]
+  bbrf scope filter ( in | out ) [ (--wildcard [--top] ) ] [ ( -p <program> ) | ( --all [--show-disabled] ) ]
+  bbrf ( inscope | outscope ) ( add | remove ) ( - | <element>... ) [ -p <program> ]
+  bbrf urls [ -d <hostname> | ( -p <program> | ( --all [--show-disabled] ) ) ] [--with-query]
+  bbrf urls where <tag_name> is [ before | after ] <value> [ -p <program> | ( --all [--show-disabled] ) ]
+  bbrf url add ( - | <url>... ) [ -d <hostname> -s <source> -p <program> --show-new ( -t key:value... [--append-tags] ) ]
+  bbrf url remove ( - | <url>... )
+  bbrf services [ -p <program> | ( --all [--show-disabled] ) ]
+  bbrf services where <tag_name> is [ before | after ] <value> [ -p <program> | ( --all [--show-disabled] ) ]
+  bbrf service add ( - | <service>... ) [ -s <source> -p <program> --show-new ( -t key:value... [ --append-tags ] ) ]
+  bbrf service remove ( - | <service>... )
+  bbrf blacklist ( add | remove ) ( - | <element>... ) [ -p <program> ]
   bbrf agents
-  bbrf agent ( list | (register | remove) <agent>... | gateway [<url>])
-  bbrf run <agent> [-p <program>]
+  bbrf agent ( list | ( register | remove ) <agent>... | gateway [ <url> ] )
+  bbrf run <agent> [ -p <program> ]
   bbrf show <document>
   bbrf listen
-  bbrf alert ( - | <message>) [ -s <source> ]
+  bbrf alert ( - | <message> ) [ -s <source> ]
   bbrf tags [<name>] [ -p <program> | --all ]
   bbrf server upgrade [-y]
 
 Options:
-  -h --help          Show this screen.
-  -p <program>       Select a program to limit the command to. Not required when the command "use" has been run before.
-  -t key:value       Specify one or more custom tags to add to your document. Format as key:value
-  -s <source>        Provide an optional source string to store information about the source of the modified data.
-  -v --version       Show the program version
-  -d <hostname>      Explicitly specify the hostname of a URL in case of relative paths
-  -n, --show-new     Print new unique values that were added to the database, and didn't already exist
-  -A, --all          Specify to get information across all programs. Incompatible with the -p flag
-  -a, --append-tags  If a tag with the same name already exists on the document, make an array and append the new value(s)
-  -q, --with-query   When listing URLs, show all URLs including queries
+  -h --help            Show this screen.
+  -p <program>         Select a program to limit the command to. Not required when the command "use" has been run before.
+  -t key:value         Specify one or more custom tags to add to your document. Format as key:value
+  -s <source>          Provide an optional source string to store information about the source of the modified data.
+  -v --version         Show the program version
+  -d <hostname>        Explicitly specify the hostname of a URL in case of relative paths
+  -n, --show-new       Print new unique values that were added to the database, and didn't already exist
+  -A, --all            Specify to get information across all programs. Incompatible with the -p flag
+  -a, --append-tags    If a tag with the same name already exists on the document, make an array and append the new value(s)
+  -q, --with-query     When listing URLs, show all URLs including queries
+  -w, --show-disabled  Combine with the flag --all/-A to include documents of disabled programs too
 """
 
 import os
@@ -60,7 +61,7 @@ CONFIG_FILE = '~/.bbrf/config.json'
 REGEX_DOMAIN = re.compile('^(?:[a-z0-9_](?:[a-z0-9-_]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
 # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
 REGEX_IP = re.compile('^([0-9]{1,3}\.){3}[0-9]{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))?$')
-VERSION = '1.1.1'
+VERSION = '1.1.2'
 
 class BBRFClient:
     config = {}
@@ -213,8 +214,21 @@ class BBRFClient:
             return r_scope
         else:
             return scope
-            
-   
+
+    def filter_scope(self):
+        '''
+        Compare stdin to the defined scope of the program and return the values that are considered in or out of scope
+        '''
+        (_, inscope, outscope) = self.api.get_program_scope(self.get_program())
+                
+        if self.arguments['in']:
+            # if filtering against the inscope, we also need to ensure it's NOT in the outscope to avoid confusion
+            match = ( line for line in sys.stdin.read().split('\n') if self.matches_scope(line, inscope) )
+            return [ line for line in match if not self.matches_scope(line, outscope) ]
+        else:
+            # otherwise, print everything that matches the outscope + everything that does not match the inscope
+            return [ line for line in sys.stdin.read().split('\n') if self.matches_scope(line, outscope) or not self.matches_scope(line, inscope) ]
+
     '''
     The BBRF client is responsible for ensuring the added domain is not explicitly outscoped,
     and conforms to the expected format of a domain.
@@ -308,7 +322,8 @@ class BBRFClient:
         removed = self.api.update_documents('domain', remove)
         
         if self.arguments['--show-new']:
-            return ["[DELETED] "+x for x in removed if x] 
+            if removed:
+                return ["[DELETED] "+x for x in removed if x]
 
     '''
     Update properties of a domain
@@ -703,17 +718,17 @@ class BBRFClient:
     
     def list_ips(self, list_all = False):
         if list_all:
-            return self.api.get_ips_by_program_name()
+            return self.api.get_ips_by_program_name(show_disabled=self.arguments['--show-disabled'])
         return self.api.get_ips_by_program_name(self.get_program())
     
     def list_ips_no_cdn(self, list_all = False):
         if list_all:
-            return self.api.get_ips_by_program_name(filter_cdn=True)
+            return self.api.get_ips_by_program_name(filter_cdn=True, show_disabled=self.arguments['--show-disabled'])
         return self.api.get_ips_by_program_name(program_name=self.get_program(), filter_cdn=True)
     
     def list_domains(self, list_all = False):
         if list_all:
-            return self.api.get_domains_by_program_name()
+            return self.api.get_domains_by_program_name(show_disabled=self.arguments['--show-disabled'])
         return self.api.get_domains_by_program_name(self.get_program())
     
     def list_urls(self, by, key = False):
@@ -722,13 +737,13 @@ class BBRFClient:
         elif by == "program":
             return self.api.get_urls_by_program(key, with_query=self.arguments['--with-query'])
         elif by == "all":
-            return self.api.get_urls_by_program(with_query=self.arguments['--with-query']) # An empty key will return all results
+            return self.api.get_urls_by_program(with_query=self.arguments['--with-query'], show_disabled=self.arguments['--show-disabled']) # An empty key will return all results
         else:
             return self.api.get_urls_by_program(self.get_program(), with_query=self.arguments['--with-query'])
         
     def list_services(self, list_all = False):
         if list_all:
-            return self.api.get_services_by_program_name()
+            return self.api.get_services_by_program_name(show_disabled=self.arguments['--show-disabled'])
         return self.api.get_services_by_program_name(self.get_program())
     
     def list_documents_view(self, doctype, view, list_all = False):
@@ -775,11 +790,11 @@ class BBRFClient:
             program_name = False
 
         if(self.arguments['before']):
-            return self.api.search_tags_between(self.arguments['<tag_name>'], self.arguments['<value>'], 'before', doctype, program_name)
+            return self.api.search_tags_between(self.arguments['<tag_name>'], self.arguments['<value>'], 'before', doctype, program_name, show_disabled=self.arguments['--show-disabled'])
         if(self.arguments['after']):
-            return self.api.search_tags_between(self.arguments['<tag_name>'], self.arguments['<value>'], 'after', doctype, program_name)
+            return self.api.search_tags_between(self.arguments['<tag_name>'], self.arguments['<value>'], 'after', doctype, program_name, show_disabled=self.arguments['--show-disabled'])
         else:
-            return self.api.search_tags(self.arguments['<tag_name>'], self.arguments['<value>'], doctype, self.arguments['-p'])
+            return self.api.search_tags(self.arguments['<tag_name>'], self.arguments['<value>'], doctype, self.arguments['-p'], show_disabled=self.arguments['--show-disabled'])
     
     def list_tags(self, tagname):
         # Always use the active program unless --all is specified
@@ -985,17 +1000,7 @@ class BBRFClient:
                     
         if self.arguments['scope']:
             if self.arguments['filter']:
-                # note that get_scope handles all the additional flags --all --wildcard --top etc.
-                if self.arguments['in']:
-                    # if filtering against the inscope, we also need to ensure it's NOT in the outscope to avoid confusion
-                    in_match = [ line for line in sys.stdin.read().split('\n') if self.matches_scope(line, self.get_scope()) ]
-                    # set the scope to 'out' -- hacky but works!
-                    self.arguments['in'] = False
-                    self.arguments['out'] = True
-                    return [ line for line in in_match if not self.matches_scope(line, self.get_scope()) ]
-                
-                # otherwise it's easy - just print whatever matches the outscope
-                return [ line for line in sys.stdin.read().split('\n') if self.matches_scope(line, self.get_scope()) ]
+                return self.filter_scope()
             else:
                 return self.get_scope()
             

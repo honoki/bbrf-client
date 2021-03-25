@@ -55,14 +55,24 @@ class BBRFApi:
     
     @todo: generalize this and get_ips by general function get_document_by_program_name with additional paramter doctype
     '''
-    def get_domains_by_program_name(self, program_name=None):
+    def get_domains_by_program_name(self, program_name=None, show_disabled=False):
         if program_name:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/domains?reduce=false&key="'+program_name+'"', headers={"Authorization": self.auth})
+            return [r['value'] for r in r.json()['rows']]
         else:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/domains?reduce=false', headers={"Authorization": self.auth})
-        if 'error' in r.json():
-            raise Exception('BBRF server error: '+r.json()['error'])
-        return [r['value'] for r in r.json()['rows']]
+            # by default, filter out all disabled programs - sadly this needs to happen client side;
+            # because there is no relational link between a domain and its program to look up the status of 
+            # the program when indexing.
+            # Actually, this can probably be improved with custom queries:
+            # `https://docs.couchdb.org/en/stable/api/database/find.html`
+            if show_disabled:
+                # no filter, so return everything
+                return [r['value'] for r in r.json()['rows']]
+            else:
+                active_programs = self.get_programs(show_disabled=show_disabled)
+                return [r['value'] for r in r.json()['rows'] if r['key'] in active_programs]
+            
     
     '''
     Get a list of all urls, filtered by program or hostname if provided.
@@ -77,14 +87,18 @@ class BBRFApi:
         # print all url, status, content_length if status and content length are set    
         return self.process_urls(r.json()['rows'], with_query)
     
-    def get_urls_by_program(self, program=None, with_query=False):
+    def get_urls_by_program(self, program=None, with_query=False, show_disabled=False):
         if program:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/urls_by_program?reduce=false&key="'+program+'"', headers={"Authorization": self.auth})
+            return self.process_urls(r.json()['rows'], with_query)
         else:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/urls_by_program?reduce=false', headers={"Authorization": self.auth})
-        if 'error' in r.json():
-            raise Exception('BBRF server error: '+r.json()['error'])
-        return self.process_urls(r.json()['rows'], with_query)
+            if show_disabled:
+                # no filter, so return everything
+                return self.process_urls(r.json()['rows'], with_query)
+            else:
+                active_programs = self.get_programs(show_disabled=show_disabled)
+                return self.process_urls([x for x in r.json()['rows'] if x['key'] in active_programs], with_query)        
         
     def process_urls(self, urls, with_query=False):
         if not with_query:
@@ -94,20 +108,25 @@ class BBRFApi:
             # get a list of URLs without any queries
             no_query = [" ".join([str(x) for x in r['value'][:3] if x]) for r in urls if len(r['value'][3]) == 0]
             # expand the URLs that do have queries
-            expanded = [ [url['value'][0]+'?'+q] + url['value'][1:3] for url in urls for q in url['value'][3] if len(url['value'][3]) > 0]
+            print(urls)
+            expanded = [ [url['value'][0]+'?'+q] + url['value'][1:3] for url in urls for q in url['value'][3] if q]
             return [" ".join([str(x) for x in r[:3] if x]) for r in expanded] + no_query
     
     '''
     Get a list of all services, filtered by program name if provided.
     '''
-    def get_services_by_program_name(self, program_name=None):
+    def get_services_by_program_name(self, program_name=None, show_disabled=False):
         if program_name:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/services?reduce=false&key="'+program_name+'"', headers={"Authorization": self.auth})
+            return [r['value'] for r in r.json()['rows']]
         else:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/services?reduce=false', headers={"Authorization": self.auth})
-        if 'error' in r.json():
-            raise Exception('BBRF server error: '+r.json()['error'])
-        return [r['value'] for r in r.json()['rows']]
+            if show_disabled:
+                # no filter, so return everything
+                return [r['value'] for r in r.json()['rows']]
+            else:
+                active_programs = self.get_programs(show_disabled=show_disabled)
+                return [r['value'] for r in r.json()['rows'] if r['key'] in active_programs]
     
     '''
     Get all documents of a certain type
@@ -142,17 +161,21 @@ class BBRFApi:
     '''
     Get a list of all ips, filtered by program name if provided.
     '''
-    def get_ips_by_program_name(self, program_name=None, filter_cdn=False):
+    def get_ips_by_program_name(self, program_name=None, filter_cdn=False, show_disabled=False):
         
         cdn_filter = '_no_cdn' if filter_cdn else ''
         
         if program_name:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/ips'+cdn_filter+'?reduce=false&key="'+program_name+'"', headers={"Authorization": self.auth})
+            return [r['value'] for r in r.json()['rows']]
         else:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/ips'+cdn_filter+'?reduce=false', headers={"Authorization": self.auth})
-        if 'error' in r.json():
-            raise Exception('BBRF server error: '+r.json()['error'])
-        return [r['value'] for r in r.json()['rows']]
+            # by default, filter out all disabled programs
+            if show_disabled:
+                return [r['value'] for r in r.json()['rows']]
+            else:
+                active_programs = self.get_programs(show_disabled=show_disabled)
+                return [r['value'] for r in r.json()['rows'] if r['key'] in active_programs]
     
     '''
     Get a list of all programs.
@@ -692,7 +715,7 @@ class BBRFApi:
     '''
     Get a list of documents based on a search term by tags, filtered by doctype
     '''
-    def search_tags(self, key, value, doctype = None, program = None):
+    def search_tags(self, key, value, doctype = None, program = None, show_disabled=False):
         if doctype and doctype not in self.doctypes:
             raise Exception('This doctype is not supported')
         r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/search_tags?key=["'+key+'", "'+value+'"]', headers={"Authorization": self.auth})
@@ -702,10 +725,13 @@ class BBRFApi:
         results = r.json()['rows']
         
         # filter results based on the doctype and program name
-        if(doctype):
+        if doctype:
             results = [x for x in results if x['value'][0] == doctype]
-        if(program):
+        if program:
             results = [x for x in results if x['value'][2] == program]
+        if not show_disabled and not doctype == 'program':
+            active_programs = self.get_programs(show_disabled=show_disabled)
+            results = [x for x in results if x['value'][2] in active_programs]
         
         return [x['value'][1] for x in results]
     
@@ -730,7 +756,7 @@ class BBRFApi:
     '''
     Get a list of documents based on a search term by tags, filtered by doctype
     '''
-    def search_tags_between(self, key, value, before_after, doctype = None, program = None):
+    def search_tags_between(self, key, value, before_after, doctype = None, program = None, show_disabled=False):
         if doctype and doctype not in self.doctypes:
             raise Exception('This doctype is not supported')
         if before_after == 'before':
@@ -743,10 +769,13 @@ class BBRFApi:
         results = r.json()['rows']
         
         # filter results based on the doctype and program name
-        if(doctype):
+        if doctype:
             results = [x for x in results if x['value'][0] == doctype]
-        if(program):
+        if program:
             results = [x for x in results if x['value'][2] == program]
+        if not show_disabled:
+            active_programs = self.get_programs(show_disabled=show_disabled)
+            results = [x for x in results if x['value'][2] in active_programs]
         
         return [x['value'][1] for x in results]
     
