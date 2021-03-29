@@ -61,7 +61,7 @@ CONFIG_FILE = '~/.bbrf/config.json'
 REGEX_DOMAIN = re.compile('^(?:[a-z0-9_](?:[a-z0-9-_]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
 # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
 REGEX_IP = re.compile('^([0-9]{1,3}\.){3}[0-9]{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))?$')
-VERSION = '1.1.2'
+VERSION = '1.1.4'
 
 class BBRFClient:
     config = {}
@@ -148,19 +148,6 @@ class BBRFClient:
         if check_exists and pro not in self.list_programs(True, True):
             raise Exception('This program does not exist.')
         self.config['program'] = pro
-    
-    '''
-    Check whether a domain matches a scope
-    '''
-    def matches_scope(self, domain, scope):
-        for s in scope:
-            # literal match
-            if s == domain:
-                return True
-            # x.example.com matches *.example.com
-            if s.startswith('*.') and domain.endswith('.'+s[2:]):
-                return True
-        return False
     
     '''
     Check whether an IP belongs to a CIDR range
@@ -284,15 +271,20 @@ class BBRFClient:
             # Avoid adding blacklisted domains or
             # domains that resolve to blacklisted ips
             if blacklisted_ip or domain in blacklist:
+                self.debug('blacklisted: '+domain)
                 continue
             # It must match the format of a domain name
             if not REGEX_DOMAIN.match(domain):
+                self.debug('REGEX_DOMAIN failed: '+domain)
                 continue
             # It may not be explicitly outscoped
             if self.matches_scope(domain, outscope):
+                self.debug('outscope: '+domain)
                 continue
-            # It must match the in scope
-            if not self.matches_scope(domain, inscope):
+            # It must match the in scope, except if we're trying to @INFER the program later,
+            # which means we cannot verify the scope here
+            if not self.get_program() == '@INFER' and not self.matches_scope(domain, inscope):
+                self.debug('Not inscope: '+domain)
                 continue
                 
             # Add the ips if we already parsed other ips for this domain,
@@ -301,7 +293,7 @@ class BBRFClient:
                 add_domains[domain].extend(ips)
             else:
                 add_domains[domain] = ips
-        
+                
         # add all new scope at once to drastically reduce runtime of large input
         if len(add_inscope) > 0:
             self.add_inscope(add_inscope, passalong={'doc':copy, 'inscope':inscope, 'outscope':outscope})
@@ -309,8 +301,8 @@ class BBRFClient:
         if len(add_domains) > 0:
             success, _ = self.api.add_documents('domain', add_domains, self.get_program(), source=self.arguments['-s'], tags=self.arguments['-t'])
         
-        if self.arguments['--show-new']:
-            return ["[NEW] "+x for x in success if x]
+            if self.arguments['--show-new'] and success:
+                return ["[NEW] "+x for x in success if x]
     
     '''
     This is now balanced over 100 concurrent threads in order to drastically
@@ -321,9 +313,8 @@ class BBRFClient:
         remove = {domain: {'_deleted': True} for domain in domains}
         removed = self.api.update_documents('domain', remove)
         
-        if self.arguments['--show-new']:
-            if removed:
-                return ["[DELETED] "+x for x in removed if x]
+        if self.arguments['--show-new'] and removed:
+            return ["[DELETED] "+x for x in removed if x]
 
     '''
     Update properties of a domain
@@ -361,7 +352,7 @@ class BBRFClient:
         
         updated = self.api.update_documents('domain', {domain: update_domains[domain] for domain in update_domains.keys()}, append_tags=self.arguments['--append-tags'])
         
-        if self.arguments['--show-new']:
+        if self.arguments['--show-new'] and updated:
             return [ "[UPDATED] "+x for x in updated if x]
     
     def add_ips(self, ips):
@@ -399,7 +390,7 @@ class BBRFClient:
 
         success, _ = self.api.add_documents('ip', add_ips, self.get_program(), source=self.arguments['-s'], tags=self.arguments['-t'])
         
-        if self.arguments['--show-new']:
+        if self.arguments['--show-new'] and success:
             return ["[NEW] "+x for x in success if x]
         
     def remove_ips(self, ips):
@@ -407,7 +398,7 @@ class BBRFClient:
         remove = {ip: {'_deleted': True} for ip in ips}
         removed = self.api.update_documents('ip', remove)
         
-        if self.arguments['--show-new']:
+        if self.arguments['--show-new'] and removed:
             return ["[DELETED] "+x for x in removed if x] 
             
     '''
@@ -444,7 +435,7 @@ class BBRFClient:
             
         updated = self.api.update_documents('ip', {ip: update_ips[ip] for ip in update_ips.keys()}, append_tags=self.arguments['--append-tags'])
         
-        if self.arguments['--show-new']:
+        if self.arguments['--show-new'] and updated:
             return [ "[UPDATED] "+x for x in updated if x]
     
     '''
@@ -527,11 +518,11 @@ class BBRFClient:
                 print("Illegal hostname:",hostname)
                 continue
             # It may not be explicitly outscoped
-            if self.matches_scope(hostname, outscope):
+            if not self.get_program() == '@INFER' and self.matches_scope(hostname, outscope):
                 print("skipping outscoped hostname:",hostname)
                 continue
             # It must match the in scope
-            if not self.matches_scope(hostname, inscope):
+            if not self.get_program() == '@INFER' and not self.matches_scope(hostname, inscope):
                 print("skipping not inscope hostname:",hostname)
                 continue
             
@@ -571,9 +562,13 @@ class BBRFClient:
         updated = self.api.update_documents('url', {url: add_urls[url] for url in failed}, append_tags=self.arguments['--append-tags'])
         
         
-            
-        if self.arguments['--show-new']:
-            return [ "[UPDATED] "+x for x in updated if x] + ["[NEW] "+x for x in success if x]
+        results = []
+        if self.arguments['--show-new'] and updated:
+            results = [ "[UPDATED] "+x for x in updated if x]
+        if self.arguments['--show-new'] and success:
+            results = results + ["[NEW] "+x for x in success if x]
+        if len(results) > 0:
+            return results
         
     '''
     Remove URLs
@@ -585,6 +580,13 @@ class BBRFClient:
         
         remove = {url.split(" ")[0]: {'_deleted': True} for url in urls}
         _ = self.api.update_documents('url', remove)
+        
+    '''
+    Remove Services
+    '''
+    def remove_services(self, services):
+        remove = {service: {'_deleted': True} for service in services}
+        _ = self.api.update_documents('service', remove)
         
         
     '''
@@ -648,8 +650,13 @@ class BBRFClient:
                 
         updated = self.api.update_documents('service', {sid: add_services[sid] for sid in failed}, append_tags=self.arguments['--append-tags'])
         
-        if self.arguments['--show-new']:
-            return [ "[UPDATED] "+x for x in updated if x] + ["[NEW] "+x for x in success if x]
+        results = []
+        if self.arguments['--show-new'] and updated:
+            results = [ "[UPDATED] "+x for x in updated if x]
+        if self.arguments['--show-new'] and success:
+            results = results + ["[NEW] "+x for x in success if x]
+        if len(results) > 0:
+            return results
         
     
     def disable_program(self, program):
@@ -803,6 +810,20 @@ class BBRFClient:
             program_name = False
         return self.api.get_tags(tagname, program_name)
         
+    '''
+    Check whether a domain matches a scope
+    '''
+    @staticmethod
+    def matches_scope(domain, scope):
+        for s in scope:
+            # literal match
+            if s == domain:
+                return True
+            # x.example.com matches *.example.com
+            if s.startswith('*.') and domain.endswith('.'+s[2:]):
+                return True
+        return False    
+    
     def debug(self, msg):
         if 'debug' in self.config and self.config['debug']:
             print('[DEBUG] '+msg)
@@ -860,9 +881,9 @@ class BBRFClient:
                     return self.add_domains(sys.stdin.read().split('\n'))
             if self.arguments['remove']:
                 if self.arguments['<domain>']:
-                    self.remove_domains(self.arguments['<domain>'])
+                    return self.remove_domains(self.arguments['<domain>'])
                 elif self.arguments['-']:
-                    self.remove_domains(sys.stdin.read().split('\n'))
+                    return self.remove_domains(sys.stdin.read().split('\n'))
             if self.arguments['update']:
                 if self.arguments['<domain>']:
                     return self.update_domains(self.arguments['<domain>'])
@@ -947,6 +968,12 @@ class BBRFClient:
                     return self.add_services(self.arguments['<service>'])
                 if self.arguments['-']:
                     return self.add_services([u.rstrip() for u in sys.stdin.read().split('\n')])
+            if self.arguments['remove']:
+                if self.arguments['<service>']:
+                    return self.remove_services(self.arguments['<service>'])
+                if self.arguments['-']:
+                    return self.remove_services([s.rstrip() for s in sys.stdin.read().split('\n')])
+                
             
         if self.arguments['services']:
             if self.arguments['where']:
@@ -1030,6 +1057,9 @@ def main():
                 print(result)
     except Exception as e:
         print('[ERROR] '+str(e))
+        if 'debug' in self.config and self.config['debug']:
+            import traceback
+            traceback.print_exc()
             
 if __name__ == '__main__':
     main()

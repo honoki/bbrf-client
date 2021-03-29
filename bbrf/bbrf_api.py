@@ -108,7 +108,6 @@ class BBRFApi:
             # get a list of URLs without any queries
             no_query = [" ".join([str(x) for x in r['value'][:3] if x]) for r in urls if len(r['value'][3]) == 0]
             # expand the URLs that do have queries
-            print(urls)
             expanded = [ [url['value'][0]+'?'+q] + url['value'][1:3] for url in urls for q in url['value'][3] if q]
             return [" ".join([str(x) for x in r[:3] if x]) for r in expanded] + no_query
     
@@ -198,6 +197,8 @@ class BBRFApi:
             return [r['value'] for r in r.json()['rows']]
     
     def get_program_scope(self, program_name):
+        if program_name == '@INFER':
+            return None, [], []
         self.debug('getting program scope')
         r = self.requests_session.get(self.BBRF_API+'/'+program_name, headers={"Authorization": self.auth})
         if 'error' in r.json():
@@ -221,6 +222,8 @@ class BBRFApi:
             
     def get_program_blacklist(self, program_name=None, doc=None):
         self.debug('getting program blacklist')
+        if program_name == '@INFER':
+            return []
         if not doc:
             r = self.requests_session.get(self.BBRF_API+'/'+program_name, headers={"Authorization": self.auth})
             doc = r.json()
@@ -265,7 +268,7 @@ class BBRFApi:
     Add a list of documents to a program in bulk.
     '''
     def add_documents(self, doctype, identifiers, program_name, source=None, tags=[]):
-        self.debug('adding document in bulk')
+        self.debug('adding documents in bulk')
         if doctype not in self.doctypes:
             raise Exception('This doctype is not supported')
         # Create documents in bulk
@@ -278,10 +281,50 @@ class BBRFApi:
         elif doctype == 'domain':
             relname = 'ips'
         
+        if program_name == '@INFER':
+            # When related identifiers are supplied, e.g. `bbrf ip add 1.1.1.1:example.com`
+            # we can infer the program by fetching the program for `example.com`
+            
+            program_candidates = {}
+            
+            if relname:
+                # get all candidate program names by identifier in rel:
+                r = self.requests_session.post(self.BBRF_API+'/_all_docs?include_docs=true', json.dumps({'keys': [x for docid in identifiers.keys() for x in identifiers[docid]]}), headers={"Authorization": self.auth, 'Content-Type': 'application/json'})
+                program_candidates = {a['key']: a['doc']['program'] for a in r.json()['rows'] if 'doc' in a and a['doc']}
+            
+            # get all scope definitions of programs to dynamically match domains
+            r = self.requests_session.post(self.BBRF_API+'/_all_docs?include_docs=true', json.dumps({'keys': [x for x in self.get_programs()]}), headers={"Authorization": self.auth, 'Content-Type': 'application/json'})
+            program_scopes = {r['id']: {'in': r['doc']['inscope'], 'out':r['doc']['outscope']}  for r in r.json()['rows'] if 'doc' in r and r['doc']}
+        
         for docid in identifiers.keys():
+            # extract the appropriate program name from the list of candidates
+            infered_program_name = program_name
+            if program_name == '@INFER':
+                infered_program_name = [program_candidates[d] for d in program_candidates.keys() if d in identifiers[docid]]
+                if len(infered_program_name) > 0:
+                    infered_program_name = infered_program_name[0]
+                else:
+                    # no luck with the linked documents, but if we're adding a URL or domain,
+                    # we may match against known scopes
+                    if doctype == 'domain':
+                        from . import BBRFClient
+                        infered_program_name = [p for p in program_scopes.keys() if BBRFClient.matches_scope(docid, program_scopes[p]['in']) and not BBRFClient.matches_scope(docid, program_scopes[p]['out'])]
+                        if len(infered_program_name) > 0:
+                            infered_program_name = infered_program_name[0]
+                    elif doctype == 'url':
+                        from . import BBRFClient
+                        infered_program_name = [p for p in program_scopes.keys() if BBRFClient.matches_scope(identifiers[docid]['hostname'], program_scopes[p]['in']) and not BBRFClient.matches_scope(identifiers[docid]['hostname'], program_scopes[p]['out'])]
+                        print(infered_program_name)
+                        if len(infered_program_name) > 0:
+                            infered_program_name = infered_program_name[0]
+
+            if not infered_program_name or infered_program_name == '@INFER':
+                # was unable to infer, skipping document
+                continue
+                    
             doc = {
                 '_id': docid,
-                'program': program_name,
+                'program': infered_program_name,
                 'type': doctype
             }
             if relname:
@@ -310,14 +353,16 @@ class BBRFApi:
             headers={"Authorization": self.auth, "Content-Type": "application/json"}
         )
         
+        if r.status_code is not 201:
+            raise Exception('Unexpected BBRF response: '+r.json())
+        
         # return (success,failed) with identifiers of new docs and docs that failed due to conflict
         return (
-            [doc['id'] for doc in r.json() if 'error' not in doc],
+            [doc['id'] for doc in r.json() if 'ok' in doc and doc['ok']],
             [doc['id'] for doc in r.json() if 'error' in doc and doc['error'] == 'conflict']
         )
         
-        #if 'error' in r.json():
-        #    raise Exception('BBRF server error: '+r.json()['error'])
+        
     
     '''
     Get the identifier of a document based on a set of properties defined in propmap
@@ -481,8 +526,6 @@ class BBRFApi:
                     if type(original_document[prop]) is dict:
                         new_dict = original_document[prop]
                         for key in updates[prop]:
-                            self.debug(prop)
-                            self.debug(str(append_tags))
                             if prop is 'tags' and append_tags:
                                 # append the new value or list to the existing list
                                 if not key in new_dict:
@@ -567,7 +610,7 @@ class BBRFApi:
                         chunk = chunk.decode("utf-8")
                         changes = chunk.split('\n')  # make sure we handle individual changes
                         for change in changes:
-                            print(change)
+                            #print(change)
                             if(change.startswith('{')):
                                 data = json.loads(change)
                                 change_data.append(data)
@@ -591,6 +634,10 @@ class BBRFApi:
         error = None
         source = ''
         message = ''
+
+        # keep track of new documents to trigger hooks in bulk
+        new = {'domain': [], 'ip': [], 'service': [], 'url': []}
+        update = {'domain': [], 'ip': [], 'service': [], 'url': []}
         
         print('Looping changes')
         for change in changes:
@@ -601,6 +648,10 @@ class BBRFApi:
             elif 'changes' in change:
                 seq = change['seq']
                 if change['changes'][-1]['rev'].startswith('1-'):  # check if it is the first revision of a document
+                    
+                    if 'type' in change['doc'] and change['doc']['type'] in new.keys():
+                        new[change['doc']['type']].append(change['id'])
+                    
                     # notify on new domain
                     if 'type' in change['doc'] and change['doc']['type'] == 'domain':
                         if 'source' in change['doc']:
@@ -613,14 +664,51 @@ class BBRFApi:
                         if 'source' in change['doc'] and change['doc']['source']:
                             message += '['+change['doc']['source']+'] '
                         message += change['doc']['message']
+                else:
+                    # it's not new, hence it's an updated document:
+                    if 'type' in change['doc'] and change['doc']['type'] in new.keys():
+                        update[change['doc']['type']].append(change['id'])
         
         if message:
             if self.sc:
                 self.sc.api_call('chat.postMessage', channel='bbrf', text=message, username='bbrf-bot')
             if self.discord_webhook:
                 requests.post(self.discord_webhook, json.dumps({'content': message}), headers={'Content-Type': 'application/json'})
+                
+        for doctype in new.keys():
+            if len(new[doctype]) > 0:
+                self.execute_hooks('new', doctype, new[doctype])
+        for doctype in update.keys():
+            if len(update[doctype]) > 0:
+                self.execute_hooks('update', doctype, update[doctype])
         
         return error, seq
+    
+    '''
+    Execute hooks in ~/.bbrf/hooks/{domain,ip,url,service}/{new,update}/
+    '''
+    def execute_hooks(self, hooktype, doctype, identifiers):
+        print('Executing '+hooktype+'_'+doctype)
+        # first iteration without queueing: just
+        # run the programs all at once in the background
+        from subprocess import Popen
+        from os import listdir
+        from os.path import isfile, join, expanduser
+        hookdir = expanduser('~/.bbrf/hooks/'+doctype+'/'+hooktype)
+        try:
+            scripts = [join(hookdir, f) for f in listdir(hookdir) if isfile(join(hookdir, f)) and f.endswith('.sh')]
+            for script in scripts:
+                print('Running '+script+'...')
+                args = [script]
+                args.extend(identifiers)
+                p = Popen(args)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            print(e.message)
+            # possibly the hooks directory doesn't exist
+            pass
+        #p = Popen([, 'ls'])
     
     '''
     Run an agent by triggering the Lambda HTTP endpoint for an agent
