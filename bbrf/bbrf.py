@@ -5,7 +5,7 @@
 Usage:
   bbrf ( new | use | disable | enable ) <program> [ -t key:value ]...
   bbrf programs [ --show-disabled --show-empty-scope ]
-  bbrf programs where <tag_name> is [ before | after ] <value>
+  bbrf programs where <tag_name> is [ before | after ] <value> [ --show-disabled --show-empty-scope ]
   bbrf program ( active | update ( <program>... | - ) -t key:value... [--append-tags])
   bbrf domains [ --view <view> ( -p <program> | ( --all [--show-disabled] ) ) ]
   bbrf domains where <tag_name> is [ before | after ] <value> [ -p <program> | ( --all [--show-disabled] ) ]
@@ -58,13 +58,14 @@ from docopt import docopt
 
 CONFIG_FILE = '~/.bbrf/config.json'
 # Thanks https://regexr.com/3au3g
-REGEX_DOMAIN = re.compile('^(?:[a-z0-9_](?:[a-z0-9-_]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
+REGEX_DOMAIN = re.compile('^(?:[a-z0-9_](?:[a-z0-9-_]{0,61}[a-z0-9])?\\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
 # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
-REGEX_IP = re.compile('^([0-9]{1,3}\.){3}[0-9]{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))?$')
-VERSION = '1.1.4'
+REGEX_IP = re.compile('^([0-9]{1,3}\\.){3}[0-9]{1,3}(/([0-9]|[1-2][0-9]|3[0-2]))?$')
+VERSION = '1.1.6'
 
 class BBRFClient:
     config = {}
+    file_config = None
     arguments = None
     api = None
     
@@ -77,8 +78,10 @@ class BBRFClient:
             
         if not config:
             self.load_config()
+            self.file_config = True
         else:
             self.config = config
+            self.file_config = False
         
         if 'username' not in self.config:
             exit('[ERROR] Required configuration was not found: username')
@@ -93,7 +96,9 @@ class BBRFClient:
                 self.config['username'],
                 self.config['password'],
                 slack_token=self.config['slack_token'] if 'slack_token' in self.config else None,
+                slack_channel=self.config['slack_channel'] if 'slack_channel' in self.config else 'bbrf',
                 discord_webhook = self.config['discord_webhook'] if 'discord_webhook' in self.config else None,
+                slack_webhook = self.config['slack_webhook'] if 'slack_webhook' in self.config else None,
                 ignore_ssl_errors = self.config['ignore_ssl_errors'] if 'ignore_ssl_errors' in self.config else None,
                 debug = self.config['debug'] if 'debug' in self.config else False
             )
@@ -175,11 +180,12 @@ class BBRFClient:
             elif self.arguments['out']:
                 (_, _, scope) = self.api.get_program_scope(self.get_program())
         else: # get scope across all programs, making use of _view/scope
+            inscope, outscope = self.api.get_scopes(show_disabled = self.arguments['--show-disabled'])
             if self.arguments['in']:
-                scope = self.api.get_scope('in', 'active' if not self.arguments['--show-disabled'] else 'inactive')
-            if self.arguments['out']:
-                scope = self.api.get_scope('out', 'active' if not self.arguments['--show-disabled'] else 'inactive')
-        
+                scope = inscope
+            elif self.arguments['out']:
+                scope = outscope
+
         # filter the scope if --wildcard and/or --top flags are set
         if(self.arguments['--wildcard']):
             r_scope = []
@@ -206,15 +212,18 @@ class BBRFClient:
         '''
         Compare stdin to the defined scope of the program and return the values that are considered in or out of scope
         '''
-        (_, inscope, outscope) = self.api.get_program_scope(self.get_program())
-                
+        if not self.arguments['--all']:
+            (_, inscope, outscope) = self.api.get_program_scope(self.get_program())
+        else:
+            inscope, outscope = self.api.get_scopes()
+        
         if self.arguments['in']:
             # if filtering against the inscope, we also need to ensure it's NOT in the outscope to avoid confusion
-            match = ( line for line in sys.stdin.read().split('\n') if self.matches_scope(line, inscope) )
+            match = ( line for line in process_stdin() if self.matches_scope(line, inscope) )
             return [ line for line in match if not self.matches_scope(line, outscope) ]
         else:
             # otherwise, print everything that matches the outscope + everything that does not match the inscope
-            return [ line for line in sys.stdin.read().split('\n') if self.matches_scope(line, outscope) or not self.matches_scope(line, inscope) ]
+            return [ line for line in process_stdin() if self.matches_scope(line, outscope) or not self.matches_scope(line, inscope) ]
 
     '''
     The BBRF client is responsible for ensuring the added domain is not explicitly outscoped,
@@ -267,7 +276,7 @@ class BBRFClient:
                 # add this wildcard to the scope too
                 if REGEX_DOMAIN.match(domain) and not self.matches_scope(domain, outscope) and self.matches_scope(domain, inscope):
                     add_inscope.append('*.'+domain)
-            
+                    
             # Avoid adding blacklisted domains or
             # domains that resolve to blacklisted ips
             if blacklisted_ip or domain in blacklist:
@@ -287,6 +296,11 @@ class BBRFClient:
                 self.debug('Not inscope: '+domain)
                 continue
                 
+            # leading underscores are not allowed in couchdb,
+            # so we need to somehow escape them.
+            if domain.startswith('_'):
+                domain = '.'+domain
+                
             # Add the ips if we already parsed other ips for this domain,
             # or otherwise create a new one
             if domain in add_domains and type(add_domains[domain]) is list:
@@ -302,7 +316,7 @@ class BBRFClient:
             success, _ = self.api.add_documents('domain', add_domains, self.get_program(), source=self.arguments['-s'], tags=self.arguments['-t'])
         
             if self.arguments['--show-new'] and success:
-                return ["[NEW] "+x for x in success if x]
+                return ["[NEW] "+(x if not x.startswith('._') else x[1:]) for x in success if x]
     
     '''
     This is now balanced over 100 concurrent threads in order to drastically
@@ -310,11 +324,11 @@ class BBRFClient:
     '''
     def remove_domains(self, domains):
         
-        remove = {domain: {'_deleted': True} for domain in domains}
+        remove = {(domain if not domain.startswith('_') else '.'+domain ): {'_deleted': True} for domain in domains}
         removed = self.api.update_documents('domain', remove)
         
         if self.arguments['--show-new'] and removed:
-            return ["[DELETED] "+x for x in removed if x]
+            return ["[DELETED] "+(x if not x.startswith('._') else x[1:]) for x in removed if x]
 
     '''
     Update properties of a domain
@@ -339,6 +353,10 @@ class BBRFClient:
             # housekeeping
             if domain.endswith('.'):
                 domain = domain[:-1]
+            # leading underscores are not allowed in couchdb,
+            # so we need to somehow escape them.
+            if domain.startswith('_'):
+                domain = '.'+domain
                 
             # Add the ips if we already parsed other ips for this domain,
             # or otherwise create a new one
@@ -349,11 +367,14 @@ class BBRFClient:
             
             if(self.arguments['-t'] and len(self.arguments['-t']) > 0):
                 update_domains[domain]['tags'] = self.api.process_tags(self.arguments['-t'])
+                
+            if self.arguments['-s']:
+                update_domains[domain]['source'] = self.arguments['-s']
         
         updated = self.api.update_documents('domain', {domain: update_domains[domain] for domain in update_domains.keys()}, append_tags=self.arguments['--append-tags'])
         
         if self.arguments['--show-new'] and updated:
-            return [ "[UPDATED] "+x for x in updated if x]
+            return [ "[UPDATED] "+(x if not x.startswith('._') else x[1:]) for x in updated if x]
     
     def add_ips(self, ips):
         add_ips = {}
@@ -432,6 +453,9 @@ class BBRFClient:
             
             if(self.arguments['-t'] and len(self.arguments['-t']) > 0):
                 update_ips[ip]['tags'] = self.api.process_tags(self.arguments['-t'])
+                
+            if self.arguments['-s']:
+                update_ips[ip]['source'] = self.arguments['-s']
             
         updated = self.api.update_documents('ip', {ip: update_ips[ip] for ip in update_ips.keys()}, append_tags=self.arguments['--append-tags'])
         
@@ -636,7 +660,9 @@ class BBRFClient:
             sid = ip+':'+port
            
             add_services[sid] = {'ip': ip, 'port': port}
-            
+            if self.arguments['-s']:
+                add_services[sid]['source'] = self.arguments['-s']
+                
             if sname:
                 add_services[sid]['service'] = sname
 
@@ -736,7 +762,7 @@ class BBRFClient:
     def list_domains(self, list_all = False):
         if list_all:
             return self.api.get_domains_by_program_name(show_disabled=self.arguments['--show-disabled'])
-        return self.api.get_domains_by_program_name(self.get_program())
+        return [x if not x.startswith('._') else x[1:] for x in self.api.get_domains_by_program_name(self.get_program())]
     
     def list_urls(self, by, key = False):
         if by == "hostname":
@@ -784,8 +810,9 @@ class BBRFClient:
             self.config = json.load(json_file)
 
     def save_config(self):
-        with open(os.path.expanduser(CONFIG_FILE), 'w') as outfile:
-            json.dump(self.config, outfile)
+        if self.file_config:
+            with open(os.path.expanduser(CONFIG_FILE), 'w') as outfile:
+                json.dump(self.config, outfile)
             
     def listen_for_changes(self):
         self.api.listen_for_changes()
@@ -797,11 +824,11 @@ class BBRFClient:
             program_name = False
 
         if(self.arguments['before']):
-            return self.api.search_tags_between(self.arguments['<tag_name>'], self.arguments['<value>'], 'before', doctype, program_name, show_disabled=self.arguments['--show-disabled'])
+            return self.api.search_tags_between(self.arguments['<tag_name>'], self.arguments['<value>'], 'before', doctype, program_name, show_disabled=self.arguments['--show-disabled'], show_empty_scope=self.arguments['--show-empty-scope'])
         if(self.arguments['after']):
-            return self.api.search_tags_between(self.arguments['<tag_name>'], self.arguments['<value>'], 'after', doctype, program_name, show_disabled=self.arguments['--show-disabled'])
+            return self.api.search_tags_between(self.arguments['<tag_name>'], self.arguments['<value>'], 'after', doctype, program_name, show_disabled=self.arguments['--show-disabled'], show_empty_scope=self.arguments['--show-empty-scope'])
         else:
-            return self.api.search_tags(self.arguments['<tag_name>'], self.arguments['<value>'], doctype, self.arguments['-p'], show_disabled=self.arguments['--show-disabled'])
+            return [x if not x.startswith('._') else x[1:] for x in self.api.search_tags(self.arguments['<tag_name>'], self.arguments['<value>'], doctype, self.arguments['-p'], show_disabled=self.arguments['--show-disabled'], show_empty_scope=self.arguments['--show-empty-scope'])]
     
     def list_tags(self, tagname):
         # Always use the active program unless --all is specified
@@ -878,17 +905,17 @@ class BBRFClient:
                 if self.arguments['<domain>']:
                     return self.add_domains(self.arguments['<domain>'])
                 elif self.arguments['-']:
-                    return self.add_domains(sys.stdin.read().split('\n'))
+                    return self.add_domains(process_stdin())
             if self.arguments['remove']:
                 if self.arguments['<domain>']:
                     return self.remove_domains(self.arguments['<domain>'])
                 elif self.arguments['-']:
-                    return self.remove_domains(sys.stdin.read().split('\n'))
+                    return self.remove_domains(process_stdin())
             if self.arguments['update']:
                 if self.arguments['<domain>']:
                     return self.update_domains(self.arguments['<domain>'])
                 elif self.arguments['-']:
-                    return self.update_domains(sys.stdin.read().split('\n'))
+                    return self.update_domains(process_stdin())
 
         if self.arguments['ips']:
             if self.arguments['--filter-cdns']:
@@ -902,53 +929,53 @@ class BBRFClient:
                 if self.arguments['<ip>']:
                     return self.add_ips(self.arguments['<ip>'])
                 elif self.arguments['-']:
-                    return self.add_ips(sys.stdin.read().split('\n'))
+                    return self.add_ips(process_stdin())
             if self.arguments['remove']:
                 if self.arguments['<ip>']:
                     self.remove_ips(self.arguments['<ip>'])
                 elif self.arguments['-']:
-                    self.remove_ips(sys.stdin.read().split('\n'))
+                    self.remove_ips(process_stdin())
             if self.arguments['update']:
                 if self.arguments['<ip>']:
                     return self.update_ips(self.arguments['<ip>'])
                 elif self.arguments['-']:
-                    return self.update_ips(sys.stdin.read().split('\n'))
+                    return self.update_ips(process_stdin())
 
         if self.arguments['inscope']:
             if self.arguments['add']:
                 if self.arguments['<element>']:
                     self.add_inscope(self.arguments['<element>'])
                 elif self.arguments['-']:
-                    self.add_inscope(sys.stdin.read().split('\n'))
+                    self.add_inscope(process_stdin())
             if self.arguments['remove']:
                 if self.arguments['<element>']:
                     self.remove_inscope(self.arguments['<element>'])
                 elif self.arguments['-']:
-                    self.remove_inscope(sys.stdin.read().split('\n'))
+                    self.remove_inscope(process_stdin())
                     
         if self.arguments['outscope']:
             if self.arguments['add']:
                 if self.arguments['<element>']:
                     self.add_outscope(self.arguments['<element>'])
                 elif self.arguments['-']:
-                    self.add_outscope(sys.stdin.read().split('\n'))
+                    self.add_outscope(process_stdin())
             if self.arguments['remove']:
                 if self.arguments['<element>']:
                     self.remove_outscope(self.arguments['<element>'])
                 elif self.arguments['-']:
-                    self.remove_outscope(sys.stdin.read().split('\n'))
+                    self.remove_outscope(process_stdin())
                     
         if self.arguments['url']:
             if self.arguments['add']:
                 if self.arguments['<url>']:
                     return self.add_urls(self.arguments['<url>'])
                 if self.arguments['-']:
-                    return self.add_urls([u.rstrip() for u in sys.stdin.read().split('\n')])
+                    return self.add_urls([u.rstrip() for u in process_stdin()])
             if self.arguments['remove']:
                 if self.arguments['<url>']:
                     return self.remove_urls(self.arguments['<url>'])
                 if self.arguments['-']:
-                    return self.remove_urls([u.rstrip() for u in sys.stdin.read().split('\n')])
+                    return self.remove_urls([u.rstrip() for u in process_stdin()])
                     
         if self.arguments['urls']:
             if self.arguments['-d']:
@@ -967,12 +994,12 @@ class BBRFClient:
                 if self.arguments['<service>']:
                     return self.add_services(self.arguments['<service>'])
                 if self.arguments['-']:
-                    return self.add_services([u.rstrip() for u in sys.stdin.read().split('\n')])
+                    return self.add_services([u.rstrip() for u in process_stdin()])
             if self.arguments['remove']:
                 if self.arguments['<service>']:
                     return self.remove_services(self.arguments['<service>'])
                 if self.arguments['-']:
-                    return self.remove_services([s.rstrip() for s in sys.stdin.read().split('\n')])
+                    return self.remove_services([s.rstrip() for s in process_stdin()])
                 
             
         if self.arguments['services']:
@@ -986,12 +1013,12 @@ class BBRFClient:
                 if self.arguments['<element>']:
                     self.add_blacklist(self.arguments['<element>'])
                 elif self.arguments['-']:
-                    self.add_blacklist(sys.stdin.read().split('\n'))
+                    self.add_blacklist(process_stdin())
             if self.arguments['remove']:
                 if self.arguments['<element>']:
                     self.remove_blacklist(self.arguments['<element>'])
                 elif self.arguments['-']:
-                    self.remove_blacklist(sys.stdin.read().split('\n'))
+                    self.remove_blacklist(process_stdin())
         
         if self.arguments['agents']:
             return self.list_agents()
@@ -1045,7 +1072,9 @@ class BBRFClient:
         except Exception:
             print('[WARNING] Could not write to config file - make sure it exists and is writable')
             
-
+def process_stdin():
+    return filter(lambda x: not re.match(r'^\s*$', x),  sys.stdin.read().split('\n'))
+            
 def main():
     try:
         arguments = docopt(__doc__, version=VERSION)
@@ -1057,9 +1086,6 @@ def main():
                 print(result)
     except Exception as e:
         print('[ERROR] '+str(e))
-        if 'debug' in self.config and self.config['debug']:
-            import traceback
-            traceback.print_exc()
             
 if __name__ == '__main__':
     main()

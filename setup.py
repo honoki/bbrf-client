@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="bbrf",
-    version="1.1.4",
+    version="1.1.6",
     author="@honoki",
     author_email="pieter@honoki.net",
     description="The client component of the Bug Bounty Reconnaissance Framework (BBRF)",
@@ -18,7 +18,7 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    install_requires=['docopt', 'requests', 'slackclient==1.3.2'],
+    install_requires=['docopt', 'requests', 'slack_sdk'],
     python_requires='>=3.5',
     entry_points = {
         'console_scripts': ['bbrf=bbrf.bbrf:main'],

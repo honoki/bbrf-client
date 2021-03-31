@@ -21,10 +21,11 @@ cat > ~/.bbrf/config.json << EOF
     "password": "<your secure password>",
     "couchdb": "https://<your-bbrf-server>/bbrf",
     "slack_token": "<a slack token to receive notifications>",
-    "discord_webhook": "<your discord webhook>",
+    "discord_webhook": "<your discord webhook if you want one>",
     "ignore_ssl_errors": false
 }
 EOF
+# other optional settings are {"debug":true, "slack_channel": "channel-name", "slack_webhook":"https://..."}
 
 # create a new program
 bbrf new test
@@ -197,6 +198,12 @@ To list URLs across all programs, run:
 bbrf urls --all
 ```
 
+To print full URLs with the saved query strings:
+
+```bash
+bbrf urls --all --with-query
+```
+
 #### Services
 
 To store services (i.e. open ports) in BBRF, provide the input formatted as `ip:port` or `ip:port:service`, and manually specify other properties by means of the tagging system (see below for more info about tags), e.g.:
@@ -231,6 +238,22 @@ bbrf ip add 1.2.3.4 -t added_by:pieter
 bbrf ip update 1.2.3.4 -t added_by:
 ```
 
+Note that you can specify the same tag multiple times to store the tags as arrays. BBRF will follow the following rules to determine how to store tags:
+ * if a single `-t tag:value` is found, treat as a normal value;
+ * if the same tag name is provided more than once, default to an array: `-t cname:one -t cname:two`
+ * by default, overwrite existing values for the tags when updating, unless `--append-tags` is specified, in which case append new values to existing values:
+ 
+```bash
+bbrf domain update www.example.tld -t name:value
+bbrf show www.example.tld | jq .tags # { "name": "value" }
+bbrf domain update www.example.tld -t name:value2 -t name:value3
+bbrf show www.example.tld | jq .tags # { "name": ["value2", "value3"] }
+bbrf domain update www.example.tld -t name:value4 --append-tags
+bbrf show www.example.tld | jq .tags # { "name": ["value2", "value3", "value4"] }
+bbrf domain update www.example.tld -t name:
+bbrf show www.example.tld | jq .tags # { }
+```
+
 To facilitate basic data querying, the BBRF server provides an indexed search based on all custom tags, as well as some default properties of all document types:
 
 ```bash
@@ -252,6 +275,17 @@ Since all values are stored as text, this allows date comparison if you store da
 
 That also means, however, that for example `"20"` comes after `"1000"`, which makes this less suitable for integer comparison. So if you want to store integers, you may want to use padded zeros at the front to ensure that `0020` comes before `1000`.
 
+### Dynamic program inference
+
+Use the dynamic program name `-p @INFER` to infer the program name based on other properties if you're unable to specify the program flag yourself for some reason; this is currently supported for the following operations:
+
+* `bbrf ip add 1.1.1.1:example.tld -p @INFER` will set the IP's program name to the same as the domain example.tld if it already exists;
+* `bbrf domain add some.example.tld:1.2.3.4 -p @INFER` will set the domain's program name to the same as 1.2.3.4 if it already exists - note that this will bypass the scope validation of the program, because the program name is inferred just before writing to the database.
+* `bbrf domain add some.example.tld some.other.tld -p @INFER` will add the domains to whatever program scope matches the input;
+* `bbrf url add http://this.example.tld https://that.some.tld/robots.txt -p @INFER` will add the URLs to whatever program has the domain in scope;
+
+
+
 #### BBRF Listener
 
 In order to process changes and alerts as they are pushed to the data store, you need to have an active listener running somewhere:
@@ -261,3 +295,34 @@ bbrf listen
 ```
 
 This will start listening for changes on the BBRF server and push notifications to your configured Slack instance. Note that this will fail e.g. when the BBRF server is temporarily unavailable or in case of certificate errors, so you may want to loop this to auto-start in case of issues.
+
+#### Custom execution hooks
+
+The BBRF listener will also execute custom local scripts when it sees new or updated ips, domains, urls and/or services. It will automatically look for executable `.sh` files in the following locations:
+
+* `~/.bbrf/hooks/ip/new/`,
+* `~/.bbrf/hooks/ip/update/`,
+* `~/.bbrf/hooks/domain/new/`,
+* `~/.bbrf/hooks/domain/update/`,
+* `~/.bbrf/hooks/url/new/`,
+* `~/.bbrf/hooks/url/update/`,
+* `~/.bbrf/hooks/service/new/`,
+* `~/.bbrf/hooks/service/update/`,
+
+For example, here is an custom execution hook that will resolve newly added domains and store the results to your database:
+
+```bash
+#!/bin/bash
+
+#
+# BBRF hook - save to ~/.bbrf/hooks/domain/new/resolve.sh
+# and make sure it is executable: chmod +x resolve.sh
+#
+
+domains=$@
+
+printf '%s\n' ${domains[@]} | dnsx -silent -a -resp | tr -d '[]' | tee \
+      >(awk '{print $1":"$2}' | bbrf domain update -) \
+      >(awk '{print $2":"$1}' | bbrf add - -p @INFER) \
+      >(awk '{print $2":"$1}' | bbrf ip update -);
+```

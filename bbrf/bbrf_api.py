@@ -1,21 +1,21 @@
 import requests
 import base64
 import json
-from slackclient import SlackClient
+from slack_sdk import WebClient
 import logging
-
 
 class BBRFApi:
     BBRF_API = None
     auth = None
     doctypes = ['ip', 'domain', 'program', 'agent', 'url', 'service', 'config']
     sc = None
+    slack_channel = None
     discord_webhook = None
+    slack_webhook = None
     do_debug = False
-    
     requests_session = None
     
-    def __init__(self, couchdb_url, user, pwd, slack_token = None, discord_webhook = None, ignore_ssl_errors = False, debug = False):
+    def __init__(self, couchdb_url, user, pwd, slack_token = None, discord_webhook = None, slack_webhook = None, slack_channel = None, ignore_ssl_errors = False, debug = False):
         auth = user+':'+pwd
         self.auth = 'Basic '+base64.b64encode(auth.encode('utf-8')).decode('utf-8')
         self.requests_session = requests.Session()
@@ -27,9 +27,13 @@ class BBRFApi:
             requests_log.setLevel(logging.DEBUG)
             requests_log.propagate = True
         if slack_token:
-            self.sc = SlackClient(slack_token)
+            self.sc = WebClient(token=slack_token)
+        if slack_channel:
+            self.slack_channel = slack_channel
         if discord_webhook:
             self.discord_webhook = discord_webhook
+        if slack_webhook:
+            self.slack_webhook = slack_webhook
         if ignore_ssl_errors:
             from urllib3.exceptions import InsecureRequestWarning
             requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
@@ -353,8 +357,8 @@ class BBRFApi:
             headers={"Authorization": self.auth, "Content-Type": "application/json"}
         )
         
-        if r.status_code is not 201:
-            raise Exception('Unexpected BBRF response: '+r.json())
+        if 'error' in r.json():
+            raise Exception('Unexpected BBRF response: '+r.json()['error'])
         
         # return (success,failed) with identifiers of new docs and docs that failed due to conflict
         return (
@@ -392,14 +396,12 @@ class BBRFApi:
             
         # Need to encode the document so it can handle CIDR ranges including /
         r = self.requests_session.get(self.BBRF_API+'/'+requests.utils.quote(document, safe=''), headers={"Authorization": self.auth})
-        # print(r.json())
         if 'error' in r.json() and r.json()['error'] != 'not_found':
             raise Exception('BBRF server error: '+r.json()['error'])
         elif 'error' in r.json() and r.json()['error'] == 'not_found':
             return
         if 'type' in r.json() and not r.json()['type'] == doctype:
             raise Exception('The specified document (type: '+r.json()['type']+') is not of the requested type '+doctype)
-            # print("here4")
         if '_rev' in r.json():
             r = self.requests_session.delete(self.BBRF_API+'/'+requests.utils.quote(document, safe='')+'?rev='+r.json()['_rev'], headers={"Authorization": self.auth})
             if 'error' in r.json() and r.json()['error'] != 'not_found':
@@ -409,6 +411,9 @@ class BBRFApi:
     Return a raw version of a document by id
     '''
     def get_document(self, docid):
+        # escape leading underscores
+        if docid.startswith('_'):
+            docid = '.'+docid
         r = self.requests_session.get(self.BBRF_API+'/'+requests.utils.quote(docid, safe=''), headers={"Authorization": self.auth})
         if 'error' in r.json() and r.json()['error'] == 'not_found':
             return None
@@ -485,8 +490,12 @@ class BBRFApi:
         to_be_updated = []
         
         for x in current.keys():
+            # we need to ensure the source property is preserved when it's not explicitly set
+            if not 'source' in updates[x] and 'source' in current[x]:
+                updates[x]['source'] = current[x]['source']
             if not self.docs_are_equal(current[x], updates[x]):
                 to_be_updated.append(updates[x])
+                
         # TODO:
         # check current doctype against document.type
         for updates in to_be_updated:
@@ -523,10 +532,10 @@ class BBRFApi:
                         
                     # if it's a dict, make sure the update values are added to the existing map
                     # for example, this is the case when updating tags of a document
-                    if type(original_document[prop]) is dict:
+                    elif type(original_document[prop]) is dict:
                         new_dict = original_document[prop]
                         for key in updates[prop]:
-                            if prop is 'tags' and append_tags:
+                            if prop == 'tags' and append_tags:
                                 # append the new value or list to the existing list
                                 if not key in new_dict:
                                     new_dict[key] = updates[prop][key]
@@ -671,9 +680,14 @@ class BBRFApi:
         
         if message:
             if self.sc:
-                self.sc.api_call('chat.postMessage', channel='bbrf', text=message, username='bbrf-bot')
+                try:
+                    self.sc.chat_postMessage(channel=self.slack_channel, text=message)
+                except Exception as e:
+                    print('[ERROR] '+e.response['error'])
             if self.discord_webhook:
                 requests.post(self.discord_webhook, json.dumps({'content': message}), headers={'Content-Type': 'application/json'})
+            if self.slack_webhook:
+                requests.post(self.slack_webhook, json.dumps({'text': message}), headers={'Content-Type': 'application/json'})
                 
         for doctype in new.keys():
             if len(new[doctype]) > 0:
@@ -694,7 +708,7 @@ class BBRFApi:
         from subprocess import Popen
         from os import listdir
         from os.path import isfile, join, expanduser
-        hookdir = expanduser('~/.bbrf/hooks/'+doctype+'/'+hooktype)
+        hookdir = expanduser('~/.bbrf/hooks/'+doctype+'/'+hooktype+'/')
         try:
             scripts = [join(hookdir, f) for f in listdir(hookdir) if isfile(join(hookdir, f)) and f.endswith('.sh')]
             for script in scripts:
@@ -761,49 +775,23 @@ class BBRFApi:
         r = self.requests_session.post(self.BBRF_API, json.dumps(alert), headers={"Content-Type": "application/json", "Authorization": self.auth})
         if 'error' in r.json():
             raise Exception('BBRF server error: '+r.json()['error'])
-        
+            
     '''
     List scopes across programs using _view/scope - does not support filtering by program.
     To get scope for one program, use `bbrf program scope`.
     '''
-    def get_scope(self, in_out="in", active_inactive="active"):
+    def get_scopes(self, show_disabled=False):
+        r = self.requests_session.get(
+            self.BBRF_API+'/_design/bbrf/_view/scope',
+            headers={"Authorization": self.auth}
+        )
+        results = [ r for r in r.json()['rows'] if show_disabled or r['key'][0] ]
+        return [r['key'][2] for r in results if r['key'][1].lower() == "in"], [r['key'][2] for r in results if r['key'][1].lower() == "out"]
         
-        r  = None
-        
-        # list inscope of active programs
-        if in_out == "in" and active_inactive == "active":
-            r = self.requests_session.get(
-                self.BBRF_API+'/_design/bbrf/_view/scope?startkey=[true,"IN"]&endkey=[true,"INZZZ"]',
-                headers={"Authorization": self.auth}
-            )
-        
-        # list inscope of inactive programs
-        if in_out == "in" and active_inactive == "inactive":
-            r = self.requests_session.get(
-                self.BBRF_API+'/_design/bbrf/_view/scope?startkey=[false,"IN"]&endkey=[false,"INZZZ"]',
-                headers={"Authorization": self.auth}
-            )
-            
-        # list outscope of active programs
-        if in_out == "out" and active_inactive == "active":
-            r = self.requests_session.get(
-                self.BBRF_API+'/_design/bbrf/_view/scope?startkey=[true,"OUT"]&endkey=[true,"OUTZZZ"]',
-                headers={"Authorization": self.auth}
-            )
-            
-        # list outscope of inactive programs
-        if in_out == "out" and active_inactive == "inactive":
-            r = self.requests_session.get(
-                self.BBRF_API+'/_design/bbrf/_view/scope?startkey=[false,"OUT"]&endkey=[false,"OUTZZZ"]',
-                headers={"Authorization": self.auth}
-            )
-        
-        return [r['key'][2] for r in r.json()['rows']]
-    
     '''
     Get a list of documents based on a search term by tags, filtered by doctype
     '''
-    def search_tags(self, key, value, doctype = None, program = None, show_disabled=False):
+    def search_tags(self, key, value, doctype = None, program = None, show_disabled=False , show_empty_scope=False):
         if doctype and doctype not in self.doctypes:
             raise Exception('This doctype is not supported')
         r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/search_tags?key=["'+key+'", "'+value+'"]', headers={"Authorization": self.auth})
@@ -818,10 +806,10 @@ class BBRFApi:
         if program:
             results = [x for x in results if x['value'][2] == program]
         if not show_disabled and not doctype == 'program':
-            active_programs = self.get_programs(show_disabled=show_disabled)
+            active_programs = self.get_programs(show_disabled=show_disabled, show_empty_scope=show_empty_scope)
             results = [x for x in results if x['value'][2] in active_programs]
         
-        return [x['value'][1] for x in results]
+        return [x['value'][1] for x in results if x['key'][0] == key]
     
 
     def process_tags(self, tags, append_tags=False):
@@ -844,7 +832,7 @@ class BBRFApi:
     '''
     Get a list of documents based on a search term by tags, filtered by doctype
     '''
-    def search_tags_between(self, key, value, before_after, doctype = None, program = None, show_disabled=False):
+    def search_tags_between(self, key, value, before_after, doctype = None, program = None, show_disabled=False, show_empty_scope=False):
         if doctype and doctype not in self.doctypes:
             raise Exception('This doctype is not supported')
         if before_after == 'before':
@@ -862,10 +850,10 @@ class BBRFApi:
         if program:
             results = [x for x in results if x['value'][2] == program]
         if not show_disabled:
-            active_programs = self.get_programs(show_disabled=show_disabled)
+            active_programs = self.get_programs(show_disabled=show_disabled, show_empty_scope=show_empty_scope)
             results = [x for x in results if x['value'][2] in active_programs]
         
-        return [x['value'][1] for x in results]
+        return [x['value'][1] for x in results if x['key'][0] == key]
     
     def get_tags(self, tagname, program_name=None):
         filter_name = 'key="'+tagname+'"' if tagname else ''
