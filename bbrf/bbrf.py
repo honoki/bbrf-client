@@ -28,7 +28,7 @@ Usage:
   bbrf agents
   bbrf agent ( list | ( register | remove ) <agent>... | gateway [ <url> ] )
   bbrf run <agent> [ -p <program> ]
-  bbrf show <document>
+  bbrf show ( - | <document>... )
   bbrf listen
   bbrf alert ( - | <message> ) [ -s <source> ]
   bbrf tags [<name>] [ -p <program> | --all ]
@@ -61,7 +61,7 @@ CONFIG_FILE = '~/.bbrf/config.json'
 REGEX_DOMAIN = re.compile('^(?:[a-z0-9_](?:[a-z0-9-_]{0,61}[a-z0-9])?\\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
 # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
 REGEX_IP = re.compile('^([0-9]{1,3}\\.){3}[0-9]{1,3}(/([0-9]|[1-2][0-9]|3[0-2]))?$')
-VERSION = '1.1.6'
+VERSION = '1.1.7'
 
 class BBRFClient:
     config = {}
@@ -701,6 +701,7 @@ class BBRFClient:
         changed = False
         
         for e in elements:
+            e = e.lower()
             if e not in inscope:
                 if REGEX_DOMAIN.match(e) or e.startswith('*.') and REGEX_DOMAIN.match(e[2:]):
                     changed = True
@@ -715,6 +716,7 @@ class BBRFClient:
         changed = False
         
         for e in elements:
+            e = e.lower()
             if e and e in inscope:
                 changed = True
                 inscope.remove(e)
@@ -728,6 +730,7 @@ class BBRFClient:
         changed = False
         
         for e in elements:
+            e = e.lower()
             if e not in outscope:
                 if REGEX_DOMAIN.match(e) or e.startswith('*.') and REGEX_DOMAIN.match(e[2:]):
                     changed = True
@@ -742,6 +745,7 @@ class BBRFClient:
         changed = False
         
         for e in elements:
+            e = e.lower()
             if e and e in outscope:
                 changed = True
                 outscope.remove(e)
@@ -1040,7 +1044,20 @@ class BBRFClient:
             return self.api.run_agent(self.arguments['<agent>'][0], self.get_program())
         
         if self.arguments['show']:
-            return self.api.get_document(self.arguments['<document>'])
+            if not self.arguments['-']:
+                # fall back to get_document if a single document is requested,
+                # for backwards compatibility, so we continue to return a single object
+                # rather than an array.       
+                if(len(self.arguments['<document>']) == 1):
+                    return self.api.get_document(self.arguments['<document>'][0])
+                
+                return self.api.get_documents(self.arguments['<document>'])
+            else:
+                # if list of documents comes from stdin, we presume the
+                # user does not know it might only contain one identifier, and should
+                # always handle the output as an array
+                return self.api.get_documents(process_stdin())
+            
 
         if self.arguments['listen']:
             self.listen_for_changes()

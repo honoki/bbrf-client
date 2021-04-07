@@ -134,7 +134,7 @@ class BBRFApi:
     '''
     Get all documents of a certain type
     '''
-    def get_documents(self, doctype, program_name = None):
+    def get_documents_of_type(self, doctype, program_name = None):
         if doctype not in self.doctypes:
             raise Exception('This doctype is not supported')
         if doctype == 'agent':
@@ -374,7 +374,7 @@ class BBRFApi:
     def get_document_id_by_properties(self, doctype, propmap):
         if doctype not in self.doctypes:
             raise Exception('This doctype is not supported')
-        docs = self.get_documents(doctype)
+        docs = self.get_documents_of_type(doctype)
         for doc in docs:
             matches = True
             for prop in propmap.keys():
@@ -418,6 +418,17 @@ class BBRFApi:
         if 'error' in r.json() and r.json()['error'] == 'not_found':
             return None
         return r.text
+    
+    '''
+    Return a JSON of many documents by id
+    '''
+    def get_documents(self, docids):
+        
+        r = self.requests_session.post(self.BBRF_API+'/_all_docs?include_docs=true', json.dumps({'keys': [x if not x.startswith('_.') else '.'+x for x in docids]}), headers={"Authorization": self.auth, 'Content-Type': 'application/json'})
+        
+        if 'error' in r.json() and r.json()['error'] == 'not_found':
+            return None
+        return json.dumps([ x['doc'] for x in r.json()['rows'] if not 'error' in x ])
         
     '''
     Update a document, based on the document identifier.
