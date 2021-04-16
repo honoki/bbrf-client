@@ -1,8 +1,9 @@
 import os, sys, json, pytest, io
 currentdir = os.path.dirname(os.path.realpath(__file__))
 parentdir = os.path.dirname(currentdir)
+print(parentdir)
 sys.path.append(parentdir)
-from bbrf import BBRFClient
+from src.bbrf import BBRFClient
 
 with open(os.path.expanduser('~/.bbrf/config-test.json')) as f:
     conf = json.load(f)
@@ -37,6 +38,19 @@ def test_program():
     assert bbrf('program active') == 'testtag'
     assert json.loads(bbrf('show testtag'))['tags']['test'] == 'tag'
     assert json.loads(bbrf('show testtag'))['tags']['test2'] == 'tag2'
+    
+def test_program_special_chars():
+    bbrf('new test/weird&char?')
+    # program without scope is not going to show up
+    assert 'test/weird&char?' not in bbrf('programs')
+    assert 'test/weird&char?' in bbrf('programs --show-empty-scope')
+    bbrf('use test/weird&char?')
+    bbrf('program update test/weird&char? -t test:tagupdated -t test2:tagupdated2')
+    bbrf('inscope add *.weird.com')
+    bbrf('domain add sub.weird.com')
+    assert 'sub.weird.com' in bbrf('domains')
+    bbrf('domain remove sub.weird.com')
+    bbrf('inscope remove *.weird.com')
     
     
 def test_program_use():
