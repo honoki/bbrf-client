@@ -150,16 +150,20 @@ class BBRFApi:
     '''
     @todo put restrictions on 'view' parameter, should only allow lowercase and _
     '''
-    def get_documents_view(self, program_name, doctype, view):
+    def get_documents_view(self, program_name, doctype, view, show_disabled=False):
         if doctype not in self.doctypes:
             raise Exception('This doctype is not supported')
         if program_name:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/'+doctype+'s_'+view+'?reduce=false&key="'+requests.utils.quote(program_name, safe='')+'"', headers={"Authorization": self.auth})
+            return [r['value'] for r in r.json()['rows']]
         else:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/'+doctype+'s_'+view+'?reduce=false', headers={"Authorization": self.auth})
-        if 'error' in r.json():
-            raise Exception('BBRF server error: '+r.json()['error'])
-        return [r['value'] for r in r.json()['rows']]
+            if show_disabled:
+                # no filter, so return everything
+                return [r['value'] for r in r.json()['rows']]
+            else:
+                active_programs = self.get_programs(show_disabled=show_disabled)
+                return [r['value'] for r in r.json()['rows'] if r['key'] in active_programs]
     
     '''
     Get a list of all ips, filtered by program name if provided.
@@ -815,13 +819,13 @@ class BBRFApi:
         # filter results based on the doctype and program name
         if doctype:
             results = [x for x in results if x['value'][0] == doctype]
-        if program:
+        if not doctype == 'program' and program:
             results = [x for x in results if x['value'][2] == program]
         if not show_disabled and not doctype == 'program':
             active_programs = self.get_programs(show_disabled=show_disabled, show_empty_scope=show_empty_scope)
             results = [x for x in results if x['value'][2] in active_programs]
         
-        return [x['value'][1] for x in results if x['key'][0] == key]
+        return list(set([x['value'][1] for x in results if x['key'][0] == key]))
     
 
     def process_tags(self, tags, append_tags=False):
@@ -859,13 +863,13 @@ class BBRFApi:
         # filter results based on the doctype and program name
         if doctype:
             results = [x for x in results if x['value'][0] == doctype]
-        if program:
+        if not doctype == 'program' and program:
             results = [x for x in results if x['value'][2] == program]
         if not show_disabled:
             active_programs = self.get_programs(show_disabled=show_disabled, show_empty_scope=show_empty_scope)
             results = [x for x in results if x['value'][2] in active_programs]
         
-        return [x['value'][1] for x in results if x['key'][0] == key]
+        return list(set([x['value'][1] for x in results if x['key'][0] == key]))
     
     def get_tags(self, tagname, program_name=None):
         filter_name = 'key="'+requests.utils.quote(tagname, safe='')+'"' if tagname else ''

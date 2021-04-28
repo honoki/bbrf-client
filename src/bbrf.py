@@ -804,7 +804,7 @@ class BBRFClient:
     
     def list_documents_view(self, doctype, view, list_all = False):
         if list_all:
-            return self.api.get_documents_view(None, doctype, view)
+            return self.api.get_documents_view(None, doctype, view, show_disabled=self.arguments['--show-disabled'])
         return self.api.get_documents_view(self.get_program(), doctype, view)
     
     def get_blacklist(self, copy=None):
