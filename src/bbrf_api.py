@@ -189,7 +189,7 @@ class BBRFApi:
     '''
     def get_programs(self, show_disabled=False, show_empty_scope=False):
         if show_disabled:
-            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/programs?reduce=false', headers={"Authorization": self.auth})
+            r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/programs?reduce=false&key=true', headers={"Authorization": self.auth})
         else:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/programs?reduce=false&key=false', headers={"Authorization": self.auth})
         if 'error' in r.json():
