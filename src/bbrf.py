@@ -3,7 +3,7 @@
 """BBRF Client
 
 Usage:
-  bbrf ( new | use | disable | enable ) <program> [ -t key:value ]...
+  bbrf ( new | use | disable | enable | rm ) <program> [ -t key:value ]...
   bbrf programs [ --show-disabled --show-empty-scope ]
   bbrf programs where <tag_name> is [ before | after ] <value> [ --show-disabled --show-empty-scope ]
   bbrf program ( active | update ( <program>... | - ) -t key:value... [--append-tags])
@@ -61,7 +61,7 @@ CONFIG_FILE = '~/.bbrf/config.json'
 REGEX_DOMAIN = re.compile('^(?:[a-z0-9_](?:[a-z0-9-_]{0,61}[a-z0-9])?\\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
 # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
 REGEX_IP = re.compile('^([0-9]{1,3}\\.){3}[0-9]{1,3}(/([0-9]|[1-2][0-9]|3[0-2]))?$')
-VERSION = '1.1.9'
+VERSION = '1.1.10'
 
 class BBRFClient:
     config = {}
@@ -114,7 +114,7 @@ class BBRFClient:
         self.api.create_new_program(self.get_program(), tags=self.arguments['-t'])
 
     def list_programs(self, show_disabled, show_empty_scope):
-        return self.api.get_programs(show_disabled, show_empty_scope=show_empty_scope)
+        return self.api.get_programs(show_disabled=show_disabled, show_empty_scope=show_empty_scope)
     
     # updating programs this way only supports tags for now
     def update_programs(self, programs):
@@ -323,8 +323,7 @@ class BBRFClient:
                 return ["[NEW] "+(x if not x.startswith('._') else x[1:]) for x in success if x]
     
     '''
-    This is now balanced over 100 concurrent threads in order to drastically
-    improve the throughput of these requests.
+    Use the bulk update function to mass remove domains.
     '''
     def remove_domains(self, domains):
         
@@ -333,6 +332,22 @@ class BBRFClient:
         
         if self.arguments['--show-new'] and removed:
             return ["[DELETED] "+(x if not x.startswith('._') else x[1:]) for x in removed if x]
+        
+    '''
+    Remove all documents related to a program.
+    '''
+    def remove_program(self, program):
+        all_docs = self.api.get_all_program_documents(program)
+        remove_domains = {docid: {'_deleted': True} for (docid, doctype) in all_docs if doctype == 'domain' }
+        remove_ips = {docid: {'_deleted': True} for (docid, doctype) in all_docs if doctype == 'ip' }
+        remove_urls = {docid: {'_deleted': True} for (docid, doctype) in all_docs if doctype == 'url' }
+        remove_services = {docid: {'_deleted': True} for (docid, doctype) in all_docs if doctype == 'service' }
+        
+        self.api.update_documents('domain', remove_domains)
+        self.api.update_documents('ip', remove_ips)
+        self.api.update_documents('url', remove_urls)
+        self.api.update_documents('service', remove_services)
+        self.api.update_documents('program', {program: {'_deleted': True}})
 
     '''
     Update properties of a domain
@@ -901,6 +916,9 @@ class BBRFClient:
             
         if self.arguments['enable']:
             self.enable_program(self.arguments['<program>'][0])
+            
+        if self.arguments['rm']:
+            self.remove_program(self.arguments['<program>'][0])
 
         if self.arguments['programs']:
             if self.arguments['where']:

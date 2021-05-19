@@ -251,6 +251,15 @@ class BBRFApi:
         r = self.requests_session.put(self.BBRF_API+'/'+requests.utils.quote(program_name, safe='')+'?rev='+program['_rev'], json.dumps(program), headers={"Authorization": self.auth})
         if 'error' in r.json():
             raise Exception('BBRF server error: '+r.json()['error'])
+        
+    '''
+    Return all document identifiers of documents belonging to a program.
+    '''
+    def get_all_program_documents(self, program_name):
+        r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/program_all_documents?key="'+requests.utils.quote(program_name, safe='')+'"', headers={"Authorization": self.auth})
+        if 'error' in r.json():
+            raise Exception('BBRF server error: '+r.json()['error'])
+        return [ (r['id'], r['value']) for r in r.json()['rows'] ]
             
     '''
     Get a list of all agents.
@@ -819,9 +828,11 @@ class BBRFApi:
         # filter results based on the doctype and program name
         if doctype:
             results = [x for x in results if x['value'][0] == doctype]
+        # restrict further if needs to match a specific program
         if not doctype == 'program' and program:
             results = [x for x in results if x['value'][2] == program]
-        if not show_disabled and not doctype == 'program':
+        # remove disabled programs unles the --show-disabled flag is set
+        if not show_disabled and doctype == 'program':
             active_programs = self.get_programs(show_disabled=show_disabled, show_empty_scope=show_empty_scope)
             results = [x for x in results if x['value'][2] in active_programs]
         
