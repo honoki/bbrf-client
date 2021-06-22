@@ -258,7 +258,7 @@ class BBRFClient:
             domain = domain.lower()
             
             if ':' in domain:
-                domain, ips = domain.split(':')
+                domain, ips = domain.split(':',1)
                 ips = ips.split(',')
                 
                 for ip in ips:
@@ -538,13 +538,13 @@ class BBRFClient:
             # We can't process relative URLS without understanding,
             # so need to skip those for now. Better ideas wecome!
             if not hostname:
-                print("Hostname could not be parsed, skipping "+url)
+                self.debug("Hostname could not be parsed, skipping "+url)
                 continue
             
             # If the provided hostname in -d does not match the parsed hostname,
             # we won't add it to avoid polluting the dataset
             if u.hostname and not u.hostname == hostname:
-                print("Provided hostname "+hostname+" did not match parsed hostname "+u.hostname+", skipping...")
+                self.debug("Provided hostname "+hostname+" did not match parsed hostname "+u.hostname+", skipping...")
                 continue
                 
             # If the provided URL is relative, we need to rewrite the URL
@@ -562,15 +562,15 @@ class BBRFClient:
                 
             # It must match the format of a domain name or an IP address
             if not REGEX_DOMAIN.match(hostname) and not REGEX_IP.match(hostname):
-                print("Illegal hostname:",hostname)
+                self.debug("Illegal hostname:",hostname)
                 continue
             # It may not be explicitly outscoped
             if not self.get_program() == '@INFER' and self.matches_scope(hostname, outscope):
-                print("skipping outscoped hostname:",hostname)
+                self.debug("skipping outscoped hostname:",hostname)
                 continue
             # It must match the in scope
             if not self.get_program() == '@INFER' and not self.matches_scope(hostname, inscope):
-                print("skipping not inscope hostname:",hostname)
+                self.debug("skipping not inscope hostname:",hostname)
                 continue
             
             if not port:
