@@ -61,7 +61,7 @@ CONFIG_FILE = '~/.bbrf/config.json'
 REGEX_DOMAIN = re.compile('^(?:[a-z0-9_](?:[a-z0-9-_]{0,61}[a-z0-9])?\\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
 # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
 REGEX_IP = re.compile('^([0-9]{1,3}\\.){3}[0-9]{1,3}(/([0-9]|[1-2][0-9]|3[0-2]))?$')
-VERSION = '1.1.10'
+VERSION = '1.1.11'
 
 class BBRFClient:
     config = {}
@@ -522,7 +522,7 @@ class BBRFClient:
             # parse properties of the URL
             u = urlparse(url)
             port = u.port
-            query = u.query if not u.query == "" else None
+            query = u.query if u.query else None
             
             # Usually we parse the hostname from the URL,
             # but we don't need to if a hostname is explicitly set
@@ -575,7 +575,16 @@ class BBRFClient:
                 if u.scheme == 'https':
                     port = 443
             
-            if url in add_urls and query not in add_urls[url]['query']:
+            # remove explicit ports 80 and 443 to avoid duplicate values
+            # when they are also added without the ports
+            print(port, url)
+            if port == 80 and ':80/' in url:
+                url = url.replace(':80/', '/', 1)
+            elif port == 443 and ':443/' in url:
+                url = url.replace(':443/', '/', 1)
+            print(port, url, query)
+            
+            if url in add_urls and query and query not in add_urls[url]['query']:
                 add_urls[url]['query'].append(query)
             else:
                 if len(parts) == 1: # only a url
@@ -583,7 +592,8 @@ class BBRFClient:
                         add_urls[url] = {
                             "hostname": hostname,
                             "port": int(port),
-                            "query": [query] if query else []
+                            "query": [query] if query else [],
+                            "scheme": u.scheme
                         }
 
                 elif len(parts) == 3: # url, status code and content length
@@ -592,7 +602,8 @@ class BBRFClient:
                         "port": int(port),
                         "status": int(parts[1]),
                         "content_length": int(parts[2]),
-                        "query": [query] if query else []
+                        "query": [query] if query else [],
+                        "scheme": u.scheme
                     }
         
         success, failed = self.api.add_documents('url', add_urls, self.get_program(), source=self.arguments['-s'], tags=self.arguments['-t'])

@@ -323,6 +323,6 @@ domains=$@
 
 printf '%s\n' ${domains[@]} | dnsx -silent -a -resp | tr -d '[]' | tee \
       >(awk '{print $1":"$2}' | bbrf domain update -) \
-      >(awk '{print $2":"$1}' | bbrf add - -p @INFER) \
+      >(awk '{print $2":"$1}' | bbrf ip add - -p @INFER) \
       >(awk '{print $2":"$1}' | bbrf ip update -);
 ```

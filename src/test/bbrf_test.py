@@ -1,9 +1,8 @@
 import os, sys, json, pytest, io
-currentdir = os.path.dirname(os.path.realpath(__file__))
-parentdir = os.path.dirname(currentdir)
-print(parentdir)
-sys.path.append(parentdir)
-from src.bbrf import BBRFClient
+#currentdir = os.path.dirname(os.path.realpath(__file__))
+#parentdir = os.path.dirname(currentdir)
+sys.path.append("..")
+from src import BBRFClient
 
 with open(os.path.expanduser('~/.bbrf/config-test.json')) as f:
     conf = json.load(f)
@@ -358,6 +357,10 @@ def test_urls():
     # relative path with specified domain
     bbrf('url add /relative -d three.example.com')
     
+    # when port :80 or :443 are explicitly set in the URL, they need to be removed
+    # so we don't duplicate value where port is not set!
+    bbrf('url add http://three.example.com:80/1 https://port.example.com:443/port https://port.example.com/port')
+    
     assert list_equals(bbrf('urls'), [
         'http://one.example.com/one',
         'http://two.example.com/two',
@@ -373,7 +376,12 @@ def test_urls():
         'http://three.example.com/query',
         'https://three.example.com:8080/url',
         #relative
-        'http://three.example.com/relative'
+        'http://three.example.com/relative',
+        
+        # explicit ports:
+        # https://port.example.com:443/port should not be listed
+        # http://three.example.com:80/1 should not be listed
+        'https://port.example.com/port'
     ])
     
     # including query strings
@@ -393,7 +401,9 @@ def test_urls():
         'http://three.example.com/query?five=six',
         'https://three.example.com:8080/url?some=what',
         #relative
-        'http://three.example.com/relative'
+        'http://three.example.com/relative',
+        # explicit ports:
+        'https://port.example.com/port'
     ])
     
     # including status codes and content lengths
@@ -437,7 +447,9 @@ http://three.example.com/c
         #querystrings
         'http://three.example.com/query',
         #relative
-        'http://three.example.com/relative'
+        'http://three.example.com/relative',
+        # explicit ports:
+        'https://port.example.com/port'
     ])
 
 '''

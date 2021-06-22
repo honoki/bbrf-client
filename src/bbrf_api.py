@@ -331,7 +331,6 @@ class BBRFApi:
                     elif doctype == 'url':
                         from . import BBRFClient
                         infered_program_name = [p for p in program_scopes.keys() if BBRFClient.matches_scope(identifiers[docid]['hostname'], program_scopes[p]['in']) and not BBRFClient.matches_scope(identifiers[docid]['hostname'], program_scopes[p]['out'])]
-                        print(infered_program_name)
                         if len(infered_program_name) > 0:
                             infered_program_name = infered_program_name[0]
 
