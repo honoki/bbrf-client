@@ -81,7 +81,7 @@ class BBRFApi:
     '''
     Get a list of all urls, filtered by program or hostname if provided.
     '''
-    def get_urls_by_hostname(self, hostname=None, with_query=False):
+    def get_urls_by_hostname(self, hostname=None, with_query=False, root_only=False):
         if hostname:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/urls_by_hostname?reduce=false&key="'+hostname+'"', headers={"Authorization": self.auth})
         else:
@@ -89,12 +89,12 @@ class BBRFApi:
         if 'error' in r.json():
             raise Exception('BBRF server error: '+r.json()['error'])
         # print all url, status, content_length if status and content length are set    
-        return self.process_urls(r.json()['rows'], with_query)
+        return self.process_urls(r.json()['rows'], with_query, root_only)
     
-    def get_urls_by_program(self, program=None, with_query=False, show_disabled=False):
+    def get_urls_by_program(self, program=None, with_query=False, root_only=False, show_disabled=False):
         if program:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/urls_by_program?reduce=false&key="'+requests.utils.quote(program, safe='')+'"', headers={"Authorization": self.auth})
-            return self.process_urls(r.json()['rows'], with_query)
+            return self.process_urls(r.json()['rows'], with_query, root_only)
         else:
             r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/urls_by_program?reduce=false', headers={"Authorization": self.auth})
             if show_disabled:
@@ -102,12 +102,16 @@ class BBRFApi:
                 return self.process_urls(r.json()['rows'], with_query)
             else:
                 active_programs = self.get_programs(show_disabled=show_disabled)
-                return self.process_urls([x for x in r.json()['rows'] if x['key'] in active_programs], with_query)        
+                return self.process_urls([x for x in r.json()['rows'] if x['key'] in active_programs], with_query, root_only)        
         
-    def process_urls(self, urls, with_query=False):
+    def process_urls(self, urls, with_query=False, root_only=False):
         if not with_query:
+            if not root_only:
             # print all url, status, content_length if status and content length are set
-            return [" ".join([str(x) for x in r['value'][:3] if x]) for r in urls]
+                return [" ".join([str(x) for x in r['value'][:3] if x]) for r in urls]
+            else:
+            # print only roots or urls:
+                return list(set(['/'.join(r['value'][0].split('/',3)[:3]) for r in urls]))
         else:
             # get a list of URLs without any queries
             no_query = [" ".join([str(x) for x in r['value'][:3] if x]) for r in urls if len(r['value'][3]) == 0]

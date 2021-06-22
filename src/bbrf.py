@@ -16,7 +16,7 @@ Usage:
   bbrf scope ( in | out ) [ (--wildcard [--top] ) ] [ ( -p <program> ) | ( --all [--show-disabled] ) ]
   bbrf scope filter ( in | out ) [ (--wildcard [--top] ) ] [ ( -p <program> ) | ( --all [--show-disabled] ) ]
   bbrf ( inscope | outscope ) ( add | remove ) ( - | <element>... ) [ -p <program> ]
-  bbrf urls [ -d <hostname> | ( -p <program> | ( --all [--show-disabled] ) ) ] [--with-query]
+  bbrf urls [ -d <hostname> | ( -p <program> | ( --all [--show-disabled] ) ) ] [ --with-query | --root ]
   bbrf urls where <tag_name> is [ before | after ] <value> [ -p <program> | ( --all [--show-disabled] ) ]
   bbrf url add ( - | <url>... ) [ -d <hostname> -s <source> -p <program> --show-new ( -t key:value... [--append-tags] ) ]
   bbrf url remove ( - | <url>... )
@@ -45,6 +45,7 @@ Options:
   -A, --all            Specify to get information across all programs. Incompatible with the -p flag
   -a, --append-tags    If a tag with the same name already exists on the document, make an array and append the new value(s)
   -q, --with-query     When listing URLs, show all URLs including queries
+  -r, --root           When listing URLs, only list the roots of the URLs
   -w, --show-disabled  Combine with the flag --all/-A to include documents of disabled programs too
 """
 
@@ -521,6 +522,7 @@ class BBRFClient:
                 
             # parse properties of the URL
             u = urlparse(url)
+            scheme = u.scheme
             port = u.port
             query = u.query if u.query else None
             
@@ -550,9 +552,11 @@ class BBRFClient:
             if not u.netloc:
                 url = 'http://' + hostname + url
                 port = 80
+                scheme = 'http'
             if url.startswith('//'):
                 url = 'http:' + url
                 port = 80
+                scheme = 'https'
             if '?' in url:
                 url = url.split('?')[0]
                 
@@ -570,19 +574,17 @@ class BBRFClient:
                 continue
             
             if not port:
-                if u.scheme == 'http':
+                if scheme == 'http':
                     port = 80
-                if u.scheme == 'https':
+                if scheme == 'https':
                     port = 443
             
             # remove explicit ports 80 and 443 to avoid duplicate values
             # when they are also added without the ports
-            print(port, url)
             if port == 80 and ':80/' in url:
                 url = url.replace(':80/', '/', 1)
             elif port == 443 and ':443/' in url:
                 url = url.replace(':443/', '/', 1)
-            print(port, url, query)
             
             if url in add_urls and query and query not in add_urls[url]['query']:
                 add_urls[url]['query'].append(query)
@@ -593,7 +595,8 @@ class BBRFClient:
                             "hostname": hostname,
                             "port": int(port),
                             "query": [query] if query else [],
-                            "scheme": u.scheme
+                            "scheme": scheme,
+                            "path": u.path
                         }
 
                 elif len(parts) == 3: # url, status code and content length
@@ -603,7 +606,8 @@ class BBRFClient:
                         "status": int(parts[1]),
                         "content_length": int(parts[2]),
                         "query": [query] if query else [],
-                        "scheme": u.scheme
+                        "scheme": scheme,
+                        "path": u.path
                     }
         
         success, failed = self.api.add_documents('url', add_urls, self.get_program(), source=self.arguments['-s'], tags=self.arguments['-t'])
@@ -815,13 +819,13 @@ class BBRFClient:
     
     def list_urls(self, by, key = False):
         if by == "hostname":
-            return self.api.get_urls_by_hostname(key, with_query=self.arguments['--with-query'])
+            return self.api.get_urls_by_hostname(key, with_query=self.arguments['--with-query'], root_only=self.arguments['--root'])
         elif by == "program":
-            return self.api.get_urls_by_program(key, with_query=self.arguments['--with-query'])
+            return self.api.get_urls_by_program(key, with_query=self.arguments['--with-query'], root_only=self.arguments['--root'])
         elif by == "all":
-            return self.api.get_urls_by_program(with_query=self.arguments['--with-query'], show_disabled=self.arguments['--show-disabled']) # An empty key will return all results
+            return self.api.get_urls_by_program(with_query=self.arguments['--with-query'], root_only=self.arguments['--root'], show_disabled=self.arguments['--show-disabled']) # An empty key will return all results
         else:
-            return self.api.get_urls_by_program(self.get_program(), with_query=self.arguments['--with-query'])
+            return self.api.get_urls_by_program(self.get_program(), with_query=self.arguments['--with-query'], root_only=self.arguments['--root'])
         
     def list_services(self, list_all = False):
         if list_all:
