@@ -62,7 +62,7 @@ CONFIG_FILE = '~/.bbrf/config.json'
 REGEX_DOMAIN = re.compile('^(?:[a-z0-9_](?:[a-z0-9-_]{0,61}[a-z0-9])?\\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
 # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
 REGEX_IP = re.compile('^([0-9]{1,3}\\.){3}[0-9]{1,3}(/([0-9]|[1-2][0-9]|3[0-2]))?$')
-VERSION = '1.1.11'
+VERSION = '1.1.12'
 
 class BBRFClient:
     config = {}
@@ -562,15 +562,15 @@ class BBRFClient:
                 
             # It must match the format of a domain name or an IP address
             if not REGEX_DOMAIN.match(hostname) and not REGEX_IP.match(hostname):
-                self.debug("Illegal hostname:",hostname)
+                self.debug("Illegal hostname: "+hostname)
                 continue
             # It may not be explicitly outscoped
             if not self.get_program() == '@INFER' and self.matches_scope(hostname, outscope):
-                self.debug("skipping outscoped hostname:",hostname)
+                self.debug("skipping outscoped hostname: "+hostname)
                 continue
             # It must match the in scope
             if not self.get_program() == '@INFER' and not self.matches_scope(hostname, inscope):
-                self.debug("skipping not inscope hostname:",hostname)
+                self.debug("skipping not inscope hostname: "+hostname)
                 continue
             
             if not port:
