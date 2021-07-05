@@ -309,7 +309,7 @@ The BBRF listener will also execute custom local scripts when it sees new or upd
 * `~/.bbrf/hooks/service/new/`,
 * `~/.bbrf/hooks/service/update/`,
 
-For example, here is an custom execution hook that will resolve newly added domains and store the results to your database:
+For example, here is a custom execution hook that will resolve newly added domains and store the results back in BBRF. Find more examples in [`docs/hooks`](docs/hooks).
 
 ```bash
 #!/bin/bash

@@ -37,7 +37,7 @@ def test_program():
     assert bbrf('program active') == 'testtag'
     assert json.loads(bbrf('show testtag'))['tags']['test'] == 'tag'
     assert json.loads(bbrf('show testtag'))['tags']['test2'] == 'tag2'
-    
+
 def test_program_special_chars():
     bbrf('new test/weird&char?')
     # program without scope is not going to show up
@@ -135,6 +135,13 @@ def test_scope():
         '*.sub.example.co.uk',
     ])
     bbrf('enable testtag')
+
+    # test URL scopes
+    bbrf('inscope add http://url.example.com/ https://url2.example.com')
+    assert 'url.example.com' in bbrf('scope in')
+    assert 'url2.example.com' in bbrf('scope in')
+    bbrf('outscope add http://URL3.EXaMPLe.cOM/')
+    assert 'url3.example.com' in bbrf('scope out')
     
 def test_scope_filter(monkeypatch):
     bbrf('use test')

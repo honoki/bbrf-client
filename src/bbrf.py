@@ -741,7 +741,7 @@ class BBRFClient:
         self.api.update_document("program", program, {"disabled":False})
         
     def add_inscope(self, elements, passalong={}):
-        doc = passalong['doc'] if 'doc' in passalong else None
+        doc = passalong['doc'] if 'doc' in passalong else None  
         inscope = passalong['inscope'] if 'inscope' in passalong else None
         outscope = passalong['outscope'] if 'outscope' in passalong else None
         
@@ -755,6 +755,12 @@ class BBRFClient:
                 if REGEX_DOMAIN.match(e) or e.startswith('*.') and REGEX_DOMAIN.match(e[2:]):
                     changed = True
                     inscope.append(e)
+                # try to parse as a URL and consider the hostname as inscope
+                else:
+                    u = urlparse(e).hostname.lower()
+                    if u not in inscope and REGEX_DOMAIN.match(u):
+                        changed = True
+                        inscope.append(u)
         
         if changed:
             self.api.update_program_scope(self.get_program(), inscope, outscope, program=doc)
@@ -784,6 +790,12 @@ class BBRFClient:
                 if REGEX_DOMAIN.match(e) or e.startswith('*.') and REGEX_DOMAIN.match(e[2:]):
                     changed = True
                     outscope.append(e)
+                # try to parse as a URL and consider the hostname as outscope
+                else:
+                    u = urlparse(e).hostname.lower()
+                    if u not in inscope and REGEX_DOMAIN.match(u):
+                        changed = True
+                        outscope.append(u)
         
         if changed:
             self.api.update_program_scope(self.get_program(), inscope, outscope, program=doc)
