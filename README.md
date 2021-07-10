@@ -14,7 +14,7 @@ If you are new to BBRF, you will need to deploy a [BBRF server](https://github.c
 # install the client
 pip install bbrf
 
-#create .bbrf folder
+# create the .bbrf folder
 mkdir -p ~/.bbrf 
 
 # ensure you have the required configuration in ~/.bbrf/config.json
