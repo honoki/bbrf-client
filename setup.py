@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="bbrf",
-    version="1.1.13",
+    version="1.1.14",
     author="@honoki",
     author_email="pieter@honoki.net",
     description="The client component of the Bug Bounty Reconnaissance Framework (BBRF)",

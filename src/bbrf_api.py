@@ -900,7 +900,7 @@ class BBRFApi:
         Upgrade server to the latest views and ensure access rights are correct (see https://github.com/honoki/bbrf-server/pull/2)
         '''
         print('Downloading latest views from https://github.com/honoki/bbrf-server')
-        r = self.requests_session.get('https://raw.githubusercontent.com/honoki/bbrf-server/main/views.json')
+        r = self.requests_session.get('https://raw.githubusercontent.com/honoki/bbrf-server/main/couchdb/views.json')
         views = r.json()
         print('Comparing to current views...')
         admin_auth = 'Basic '+base64.b64encode((admin+':'+password).encode('utf-8')).decode('utf-8')
