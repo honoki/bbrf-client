@@ -641,21 +641,30 @@ class BBRFApi:
         
         while not error:
             with self.requests_session.get(url+seq, timeout=90, headers={"Authorization": self.auth}, stream=True) as resp:
-                for chunk in resp.iter_content(None):
-                    if chunk:  # filter out keep-alive new chunks
-                        chunk = chunk.decode("utf-8")
-                        changes = chunk.split('\n')  # make sure we handle individual changes
-                        for change in changes:
-                            #print(change)
-                            if(change.startswith('{')):
-                                data = json.loads(change)
-                                change_data.append(data)
-                                # handle changes in batches of 10 seconds
-                                # to avoid cluttering the HTTP pipeline
-                                if last_update < time.time() - 10:
-                                    error, seq = self.handle_changes(change_data, seq)
-                                    change_data = []
-                                    last_update = time.time()
+                try:
+                    for chunk in resp.iter_content(None):
+                        if chunk:  # filter out keep-alive new chunks
+                            chunk = chunk.decode("utf-8")
+                            changes = chunk.split('\n')  # make sure we handle individual changes
+                            for change in changes:
+                                print(change)
+                                if(change.startswith('{')):
+                                    data = json.loads(change)
+                                    change_data.append(data)
+                                    # handle changes in batches of 10 seconds
+                                    # to avoid cluttering the HTTP pipeline
+                                    if last_update < time.time() - 10:
+                                        error, seq = self.handle_changes(change_data, seq)
+                                        change_data = []
+                                        last_update = time.time()
+                except requests.exceptions.ChunkedEncodingError as e:
+                    # this sometimes occurs with the new nginx proxy
+                    # in front of the couchdb server when the response
+                    # remains empty and the in-between proxy times out?
+                    # luckily it seems we can just continue polling to keep
+                    # this working as intended.
+                    pass
+
     
     '''
     Handle a batch of changes by sending a Slack notification if it
