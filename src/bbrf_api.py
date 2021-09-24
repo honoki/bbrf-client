@@ -755,7 +755,7 @@ class BBRFApi:
         except FileNotFoundError:
             pass
         except Exception as e:
-            print(e.message)
+            print(e)
             # possibly the hooks directory doesn't exist
             pass
         #p = Popen([, 'ls'])
