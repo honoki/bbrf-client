@@ -681,8 +681,8 @@ class BBRFApi:
         message = ''
 
         # keep track of new documents to trigger hooks in bulk
-        new = {'domain': [], 'ip': [], 'service': [], 'url': []}
-        update = {'domain': [], 'ip': [], 'service': [], 'url': []}
+        new = {'program': [], 'domain': [], 'ip': [], 'service': [], 'url': []}
+        update = {'program': [], 'domain': [], 'ip': [], 'service': [], 'url': []}
         
         print('Looping changes')
         for change in changes:
@@ -755,7 +755,7 @@ class BBRFApi:
         except FileNotFoundError:
             pass
         except Exception as e:
-            print(e.message)
+            print(e)
             # possibly the hooks directory doesn't exist
             pass
         #p = Popen([, 'ls'])
