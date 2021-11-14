@@ -33,6 +33,9 @@ Usage:
   bbrf alert ( - | <message>... ) [ -s <source> --show-new -t key:value... ] 
   bbrf tags [<name>] [ -p <program> | --all ] 
   bbrf server upgrade [-y]
+  bbrf proxy [ -p <program> ]
+  bbrf proxy set <proxy_name> <proxy_url>
+  bbrf proxy get <proxy_name>
 
 Options:
   -h --help            Show this screen.
@@ -62,7 +65,7 @@ CONFIG_FILE = '~/.bbrf/config.json'
 REGEX_DOMAIN = re.compile('^(?:[a-z0-9_](?:[a-z0-9-_]{0,61}[a-z0-9])?\\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
 # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
 REGEX_IP = re.compile('^([0-9]{1,3}\\.){3}[0-9]{1,3}(/([0-9]|[1-2][0-9]|3[0-2]))?$')
-VERSION = '1.1.15'
+VERSION = '1.2'
 
 class BBRFClient:
     config = {}
@@ -901,6 +904,30 @@ class BBRFClient:
         if(self.arguments['--all']):
             program_name = False
         return self.api.get_tags(tagname, program_name)
+
+    def set_proxy(self, proxy_name, proxy_url):
+        # set the proxy configuration with the given name
+        u = urlparse(proxy_url)
+        if not u.scheme:
+            print('[WARNING] the proxy URL does not seem to be valid, make sure to include a scheme.')
+        else:
+            self.api.update_document('config', 'proxy_config', {'settings':{proxy_name: proxy_url}}, create_if_not_exists=True)
+    
+    def get_proxy(self, proxy_name):
+        # return the proxy configuration with the given name
+        proxy_config = self.api.get_document('proxy_config')
+        if proxy_config:
+            proxies = json.loads(proxy_config)
+            if proxies and proxy_name in proxies['settings']:
+                return proxies['settings'][proxy_name]
+
+    def get_program_proxy(self):
+        # return the proxy configuration of the specified (or active) program
+        program_document = self.api.get_document(self.get_program())
+        if program_document:
+            tags = json.loads(program_document).get('tags')
+            if tags and 'proxy' in tags:
+                return self.get_proxy(tags['proxy'])
         
     '''
     Check whether a domain matches a scope
@@ -1140,6 +1167,15 @@ class BBRFClient:
             
         if self.arguments['tags']:
             return self.list_tags(self.arguments['<name>'])
+
+        if self.arguments['proxy']:
+            if self.arguments['set']:
+                return self.set_proxy(self.arguments['<proxy_name>'], self.arguments['<proxy_url>'])
+            elif self.arguments['get']:
+                return self.get_proxy(self.arguments['<proxy_name>'])
+            else:
+                return self.get_program_proxy()
+            self.api.server_upgrade(admin, password)
         
         if self.arguments['server']:
             import getpass

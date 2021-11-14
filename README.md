@@ -329,3 +329,27 @@ printf '%s\n' ${domains[@]} | dnsx -silent -a -resp | tr -d '[]' | tee \
       >(awk '{print $2":"$1}' | bbrf ip add - -p @INFER) \
       >(awk '{print $2":"$1}' | bbrf ip update -);
 ```
+
+#### Proxy configuration
+
+Since version 1.2, BBRF allows you to store and retrieve proxy configurations per program. This feature was designed to integrate with my [OpenVPN via SOCKS5 proxy](https://github.com/honoki/bugbounty-openvpn-socks) setup, but can be used with other proxy setups independently.
+
+For example, configure your proxy settings in BBRF as follows:
+
+```bash
+# add a proxy with name 'hackerone' and a valid proxy URL
+bbrf proxy set hackerone socks5://user:pass@yourserver.com:1080
+```
+
+Update a program's proxy settings with the custom tag `proxy` as follows:
+```bash
+# use the same name as the name of the configured proxy
+bbrf program update my_hackerone_program -t proxy:hackerone
+```
+
+Get the proxy settings of a program with `bbrf proxy -p my_hackerone_program`. For example, you can update your automation scripts to always send traffic through the right proxy as follows:
+
+```bash
+# note that the use of double quotes will allow this to work even if no proxy is configured for the current program
+curl -x "$(bbrf proxy)" ifconfig.co
+```

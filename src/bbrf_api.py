@@ -451,13 +451,13 @@ class BBRFApi:
     updates contains a map with keyname => [] that will
     be appended to the document.
     '''
-    def update_document(self, doctype, document, updates):
+    def update_document(self, doctype, document, updates, create_if_not_exists = False):
         if doctype not in self.doctypes:
             raise Exception('This doctype is not supported')
         r = self.requests_session.get(self.BBRF_API+'/'+requests.utils.quote(document, safe=''), headers={"Authorization": self.auth})
         if 'error' in r.json() and r.json()['error'] != 'not_found':
             raise Exception('BBRF server error: '+r.json()['error'])
-        elif 'error' in r.json() and r.json()['error'] == 'not_found':
+        elif 'error' in r.json() and r.json()['error'] == 'not_found' and not create_if_not_exists:
             return
         if 'type' in r.json() and not r.json()['type'] == doctype:
             raise Exception('The specified document (type: '+r.json()['type']+') is not of the requested type '+doctype)
@@ -471,6 +471,8 @@ class BBRFApi:
                     print('[Warning] The update specifies a key that does not exist: '+prop)
                     if type(updates[prop]) is list:
                         original_document[prop] = []  # initiate the property list if it doesn't exist
+                    if type(updates[prop]) is dict:
+                        original_document[prop] = {}  # initiate the property dict if it doesn't exist
                     else:
                         original_document[prop] = None
                 if not type(original_document[prop]) is type(updates[prop]):
@@ -484,6 +486,15 @@ class BBRFApi:
                             original_document[prop].append(val)
                     # filter out empty values
                     original_document[prop] = list(filter(None, original_document[prop]))
+                # if it's a dict:
+                if type(original_document[prop]) is dict:
+                    for val in updates[prop]:
+                        if val not in original_document[prop]:
+                            document_changed = True
+                            original_document[prop][val] = updates[prop][val]
+                        elif original_document[prop][val] != updates[prop][val]:
+                            document_changed = True
+                            original_document[prop][val] = updates[prop][val]
                 # if it's not a list or a dict, replace
                 elif not isinstance(original_document[prop], (list, dict)):
                     if not original_document[prop] == updates[prop]:
@@ -501,6 +512,18 @@ class BBRFApi:
                     raise Exception('BBRF server error: '+r.json()['error'])
                 
                 return document
+        elif create_if_not_exists and r.json()['error'] == 'not_found':
+            # create the document for the first time
+            r = self.requests_session.put(
+                self.BBRF_API+'/'+requests.utils.quote(document, safe=''),
+                json.dumps(updates),
+                headers={"Authorization": self.auth, "Content-Type": "application/json"}
+            )
+            
+            if 'error' in r.json():
+                raise Exception('BBRF server error: '+r.json()['error'])
+            
+            return document
         
     '''
     Update documents in bulk
