@@ -731,7 +731,7 @@ class BBRFApi:
                         message += '[ALERT] '
                         if 'source' in change['doc'] and change['doc']['source']:
                             message += '['+change['doc']['source']+'] '
-                        message += change['doc']['message']
+                        message += change['doc']['message']+'\n'
                 else:
                     # it's not new, hence it's an updated document:
                     if 'type' in change['doc'] and change['doc']['type'] in new.keys():
