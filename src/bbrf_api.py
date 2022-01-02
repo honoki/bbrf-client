@@ -744,7 +744,12 @@ class BBRFApi:
                 except Exception as e:
                     print('[ERROR] '+e.response['error'])
             if self.discord_webhook:
-                requests.post(self.discord_webhook, json.dumps({'content': message}), headers={'Content-Type': 'application/json'})
+                # bypass Discord's 2000 character restriction
+                # by breaking it up  and sending multiple messages
+                # thanks to @0xJeti / closes #89
+                for i in range(0,len(message),1000):
+                    chunk = message[i:i+1000]
+                    requests.post(self.discord_webhook, json.dumps({'content': chunk}), headers={'Content-Type': 'application/json'})
             if self.slack_webhook:
                 requests.post(self.slack_webhook, json.dumps({'text': message}), headers={'Content-Type': 'application/json'})
                 
