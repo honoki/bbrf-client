@@ -65,7 +65,7 @@ CONFIG_FILE = '~/.bbrf/config.json'
 REGEX_DOMAIN = re.compile('^(?:[a-z0-9_](?:[a-z0-9-_]{0,61}[a-z0-9])?\\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
 # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
 REGEX_IP = re.compile('^([0-9]{1,3}\\.){3}[0-9]{1,3}(/([0-9]|[1-2][0-9]|3[0-2]))?$')
-VERSION = '1.2'
+VERSION = '1.2.2'
 
 class BBRFClient:
     config = {}
@@ -760,10 +760,10 @@ class BBRFClient:
                     inscope.append(e)
                 # try to parse as a URL and consider the hostname as inscope
                 else:
-                    u = urlparse(e).hostname.lower()
-                    if u not in inscope and REGEX_DOMAIN.match(u):
+                    u = urlparse(e).hostname
+                    if u and u.lower() not in inscope and REGEX_DOMAIN.match(u.lower()):
                         changed = True
-                        inscope.append(u)
+                        inscope.append(u.lower())
         
         if changed:
             self.api.update_program_scope(self.get_program(), inscope, outscope, program=doc)
