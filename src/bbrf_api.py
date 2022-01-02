@@ -665,7 +665,7 @@ class BBRFApi:
         while not error:
             with self.requests_session.get(url+seq, timeout=90, headers={"Authorization": self.auth}, stream=True) as resp:
                 try:
-                    for chunk in resp.iter_content(None):
+                    for chunk in resp.iter_lines():
                         if chunk:  # filter out keep-alive new chunks
                             chunk = chunk.decode("utf-8")
                             changes = chunk.split('\n')  # make sure we handle individual changes
