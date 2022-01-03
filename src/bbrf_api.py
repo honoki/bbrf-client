@@ -878,6 +878,43 @@ class BBRFApi:
         
         return list(set([x['value'][1] for x in results if x['key'][0] == key]))
     
+    def search_multiple_tags(self, key=[], value=[], doctype = None, program = None, show_disabled=False , show_empty_scope=False):
+        r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/search_tags?startkey=["'+requests.utils.quote(key[0], safe='')+'", "'+requests.utils.quote(value[0], safe='')+'"]&endkey=["'+requests.utils.quote(key[1], safe='')+'","'+requests.utils.quote(value[1], safe='')+'"]', headers={"Authorization": self.auth})
+        if 'error' in r.json():
+            if str(r.json()['error']) == "query_parse_error": # Little fallback
+                r = self.requests_session.get(self.BBRF_API+'/_design/bbrf/_view/search_tags?startkey=["'+requests.utils.quote(key[0], safe='')+'", "'+requests.utils.quote(value[0], safe='')+'"]&endkey=["'+requests.utils.quote(key[1], safe='')+'","'+requests.utils.quote(value[1], safe='')+'"]&descending=true', headers={"Authorization": self.auth})
+            else:
+                raise Exception('BBRF server error: '+r.json()['error'])
+            
+        results = r.json()['rows']
+        
+        
+        # filter results based on the doctype and program name
+        if doctype:
+            results = [x for x in results if x['value'][0] == doctype]
+        # restrict further if needs to match a specific program
+        if not doctype == 'program' and program:
+            results = [x for x in results if x['value'][2] == program]
+        # remove disabled programs unles the --show-disabled flag is set
+        if not show_disabled and doctype == 'program':
+            active_programs = self.get_programs(show_disabled=show_disabled, show_empty_scope=show_empty_scope)
+            results = [x for x in results if x['value'][2] in active_programs]
+        
+        
+        d = []
+        for x in results:
+            if [ x['key'][1] == value[0] or x['key'][1] == value[1] ]:
+                if key[0] == key[1] and key[0] in json.loads(self.get_document(x['id']))['tags']:
+                    if value[0] in json.loads(self.get_document(x['id']))['tags'][key[0]] and value[1] in json.loads(self.get_document(x['id']))['tags'][key[0]]:
+                        d.append(x['id'])
+                
+                else:
+                    if key[0] in json.loads(self.get_document(x['id']))['tags'] and key[1] in json.loads(self.get_document(x['id']))['tags']:
+                        if value[0] in json.loads(self.get_document(x['id']))['tags'][key[0]] and value[1] in json.loads(self.get_document(x['id']))['tags'][str(key[1])]:
+                            d.append(x['id'])
+        
+        
+        return list(set([x for x in d]))
 
     def process_tags(self, tags, append_tags=False):
         '''
@@ -973,3 +1010,4 @@ class BBRFApi:
     def debug(self, msg):
         if self.do_debug:
             print('[DEBUG] '+msg)
+

@@ -8,7 +8,7 @@ Usage:
   bbrf programs where <tag_name> is [ before | after ] <value> [ --show-disabled --show-empty-scope ]
   bbrf program ( active | update ( <program>... | - ) -t key:value... [--append-tags])
   bbrf domains [ --view <view> ( -p <program> | ( --all [--show-disabled] ) ) ]
-  bbrf domains where <tag_name> is [ before | after ] <value> [ -p <program> | ( --all [--show-disabled] ) ]
+  bbrf domains where <tag_name> is [ before | after ] <value> [ <and_operator> <tag_name> is <value> ] [ -p <program> | ( --all [--show-disabled] ) ]
   bbrf domain ( add | remove | update ) ( - | <domain>... ) [ -p <program> -s <source> --show-new ( -t key:value... [--append-tags] ) ]
   bbrf ips [ --filter-cdns ( -p <program> | ( --all [--show-disabled] ) ) ]
   bbrf ips where <tag_name> is [ before | after ] <value> [ -p <program> | ( --all [--show-disabled] ) ]
@@ -896,7 +896,11 @@ class BBRFClient:
         if(self.arguments['after']):
             return self.api.search_tags_between(self.arguments['<tag_name>'], self.arguments['<value>'], 'after', doctype, program_name, show_disabled=self.arguments['--show-disabled'], show_empty_scope=self.arguments['--show-empty-scope'])
         else:
-            return [x if not x.startswith('._') else x[1:] for x in self.api.search_tags(self.arguments['<tag_name>'], self.arguments['<value>'], doctype, program_name, show_disabled=self.arguments['--show-disabled'], show_empty_scope=self.arguments['--show-empty-scope'])]
+            if(self.arguments['<and_operator>']):
+                return [x if not x.startswith('._') else x[1:] for x in self.api.search_multiple_tags([self.arguments['<tag_name>'][0],self.arguments['<tag_name>'][1]], [self.arguments['<value>'][0],self.arguments['<value>'][1]], doctype, program_name, show_disabled=self.arguments['--show-disabled'], show_empty_scope=self.arguments['--show-empty-scope'])]
+                               
+            else:
+               return [x if not x.startswith('._') else x[1:] for x in self.api.search_tags(self.arguments['<tag_name>'][0], self.arguments['<value>'][0], doctype, program_name, show_disabled=self.arguments['--show-disabled'], show_empty_scope=self.arguments['--show-empty-scope'])]
     
     def list_tags(self, tagname):
         # Always use the active program unless --all is specified
@@ -1205,3 +1209,4 @@ def main():
             
 if __name__ == '__main__':
     main()
+
