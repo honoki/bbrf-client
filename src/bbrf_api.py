@@ -422,6 +422,29 @@ class BBRFApi:
             r = self.requests_session.delete(self.BBRF_API+'/'+requests.utils.quote(document, safe='')+'?rev='+r.json()['_rev'], headers={"Authorization": self.auth})
             if 'error' in r.json() and r.json()['error'] != 'not_found':
                 raise Exception('BBRF server error: '+r.json()['error'])
+
+    '''
+    This is a dangerous function - will always require user confirmation
+    to remove the list of supplied documents
+    '''
+    def remove_documents(self, docids):
+        self.debug("Removing documents in bulk")
+
+        # first, get the latest revisions of each of the listed documents
+        r = self.requests_session.post(self.BBRF_API+'/_all_docs?include_docs=true', json.dumps({'keys': [x for x in docids]}), headers={"Authorization": self.auth, 'Content-Type': 'application/json'})
+        to_be_removed = [{'_id': x['key'], '_rev': x['value']['rev'], '_deleted': True} for x in r.json()['rows'] if 'doc' in x and x['doc']]
+
+        # now bulk remove all documents!
+        if len(to_be_removed) > 0:
+            r = self.requests_session.post(
+                self.BBRF_API+'/_bulk_docs',
+                json.dumps({'docs': to_be_removed}),
+                headers={"Authorization": self.auth, 'Content-Type': 'application/json'}
+            )
+            if 'error' in r.json():
+                raise Exception('BBRF server error: '+r.json()['error'])
+
+        return [x['_id'] for x in to_be_removed]
                 
     '''
     Return a raw version of a document by id

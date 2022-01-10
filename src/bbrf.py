@@ -9,19 +9,23 @@ Usage:
   bbrf program ( active | update ( <program>... | - ) -t key:value... [--append-tags])
   bbrf domains [ --view <view> ( -p <program> | ( --all [--show-disabled] ) ) ]
   bbrf domains where <tag_name> is [ before | after ] <value> [ -p <program> | ( --all [--show-disabled] ) ]
+  bbrf domains where <tag_name> is [ before | after ] <value> ( and <tag_name> is [ before | after ] <value> )... [ -p <program> | ( --all [--show-disabled] ) ]
   bbrf domain ( add | remove | update ) ( - | <domain>... ) [ -p <program> -s <source> --show-new ( -t key:value... [--append-tags] ) ]
   bbrf ips [ --filter-cdns ( -p <program> | ( --all [--show-disabled] ) ) ]
   bbrf ips where <tag_name> is [ before | after ] <value> [ -p <program> | ( --all [--show-disabled] ) ]
+  bbrf ips where <tag_name> is [ before | after ] <value> ( and <tag_name> is [ before | after ] <value> )... [ -p <program> | ( --all [--show-disabled] ) ]
   bbrf ip ( add | remove | update ) ( - | <ip>... ) [ -p <program> -s <source> --show-new ( -t key:value... [--append-tags] ) ]
   bbrf scope ( in | out ) [ (--wildcard [--top] ) ] [ ( -p <program> ) | ( --all [--show-disabled] ) ]
   bbrf scope filter ( in | out ) [ (--wildcard [--top] ) ] [ ( -p <program> ) | ( --all [--show-disabled] ) ]
   bbrf ( inscope | outscope ) ( add | remove ) ( - | <element>... ) [ -p <program> ]
   bbrf urls [ -d <hostname> | ( -p <program> | ( --all [--show-disabled] ) ) ] [ --with-query | --root ]
   bbrf urls where <tag_name> is [ before | after ] <value> [ -p <program> | ( --all [--show-disabled] ) ]
+  bbrf urls where <tag_name> is [ before | after ] <value> ( and <tag_name> is [ before | after ] <value> )... [ -p <program> | ( --all [--show-disabled] ) ]
   bbrf url add ( - | <url>... ) [ -d <hostname> -s <source> -p <program> --show-new ( -t key:value... [--append-tags] ) ]
   bbrf url remove ( - | <url>... )
   bbrf services [ -p <program> | ( --all [--show-disabled] ) ]
   bbrf services where <tag_name> is [ before | after ] <value> [ -p <program> | ( --all [--show-disabled] ) ]
+  bbrf services where <tag_name> is [ before | after ] <value> ( and <tag_name> is [ before | after ] <value> )... [ -p <program> | ( --all [--show-disabled] ) ]
   bbrf service add ( - | <service>... ) [ -s <source> -p <program> --show-new ( -t key:value... [ --append-tags ] ) ]
   bbrf service remove ( - | <service>... )
   bbrf blacklist ( add | remove ) ( - | <element>... ) [ -p <program> ]
@@ -29,6 +33,7 @@ Usage:
   bbrf agent ( list | ( register | remove ) <agent>... | gateway [ <url> ] )
   bbrf run <agent> [ -p <program> ]
   bbrf show ( - | <document>... )
+  bbrf remove ( - | <document>... )
   bbrf listen
   bbrf alert ( - | <message>... ) [ -s <source> --show-new -t key:value... ] 
   bbrf tags [<name>] [ -p <program> | --all ] 
@@ -65,7 +70,7 @@ CONFIG_FILE = '~/.bbrf/config.json'
 REGEX_DOMAIN = re.compile('^(?:[a-z0-9_](?:[a-z0-9-_]{0,61}[a-z0-9])?\\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
 # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
 REGEX_IP = re.compile('^([0-9]{1,3}\\.){3}[0-9]{1,3}(/([0-9]|[1-2][0-9]|3[0-2]))?$')
-VERSION = '1.2.2'
+VERSION = '1.3.0'
 
 class BBRFClient:
     config = {}
@@ -891,13 +896,29 @@ class BBRFClient:
         if(self.arguments['--all']):
             program_name = False
 
-        if(self.arguments['before']):
-            return self.api.search_tags_between(self.arguments['<tag_name>'], self.arguments['<value>'], 'before', doctype, program_name, show_disabled=self.arguments['--show-disabled'], show_empty_scope=self.arguments['--show-empty-scope'])
-        if(self.arguments['after']):
-            return self.api.search_tags_between(self.arguments['<tag_name>'], self.arguments['<value>'], 'after', doctype, program_name, show_disabled=self.arguments['--show-disabled'], show_empty_scope=self.arguments['--show-empty-scope'])
-        else:
-            return [x if not x.startswith('._') else x[1:] for x in self.api.search_tags(self.arguments['<tag_name>'], self.arguments['<value>'], doctype, program_name, show_disabled=self.arguments['--show-disabled'], show_empty_scope=self.arguments['--show-empty-scope'])]
-    
+        # get the results for each of the queries
+        # and only keep the elements that match all of them
+        results = []
+        subresults = []
+        for i in range(len(self.arguments['<tag_name>'])):
+            if(self.arguments['before']):
+                subresults = self.api.search_tags_between(self.arguments['<tag_name>'][i], self.arguments['<value>'][i], 'before', doctype, program_name, show_disabled=self.arguments['--show-disabled'], show_empty_scope=self.arguments['--show-empty-scope'])
+            if(self.arguments['after']):
+                subresults = self.api.search_tags_between(self.arguments['<tag_name>'][i], self.arguments['<value>'][i], 'after', doctype, program_name, show_disabled=self.arguments['--show-disabled'], show_empty_scope=self.arguments['--show-empty-scope'])
+            else:
+                subresults = [x if not x.startswith('._') else x[1:] for x in self.api.search_tags(self.arguments['<tag_name>'][i], self.arguments['<value>'][i], doctype, program_name, show_disabled=self.arguments['--show-disabled'], show_empty_scope=self.arguments['--show-empty-scope'])]
+            # filter out anything that doesn't match previous subsearch
+            if i == 0:
+                results = subresults
+            else:
+                results = [s for s in subresults if s in results]
+            # don't bother continuing if we're already out of results
+            if len(results) == 0:
+                break
+
+        return results
+
+
     def list_tags(self, tagname):
         # Always use the active program unless --all is specified
         program_name = self.get_program()
@@ -1148,7 +1169,17 @@ class BBRFClient:
                 # user does not know it might only contain one identifier, and should
                 # always handle the output as an array
                 return self.api.get_documents(process_stdin())
-            
+
+        if self.arguments['remove']:
+            if not self.arguments['-']:
+                remove_ids = self.arguments['<document>']
+            else:
+                remove_ids = process_stdin()
+            yn = input('WARNING! This will remove '+str(len(remove_ids))+' document(s) from your datastore and cannot be reverted.\nAre you sure you want to continue? [y/N] ')
+            if yn.lower() == 'y':
+                self.debug('Removing list of '+str(len(remove_ids))+' documents...')
+                removed = self.api.remove_documents(remove_ids)
+                self.debug('Successfully removed '+str(len(removed))+' documents')
 
         if self.arguments['listen']:
             self.listen_for_changes()
