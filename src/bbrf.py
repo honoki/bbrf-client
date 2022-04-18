@@ -108,6 +108,8 @@ class BBRFClient:
                 slack_channel=self.config['slack_channel'] if 'slack_channel' in self.config else 'bbrf',
                 discord_webhook = self.config['discord_webhook'] if 'discord_webhook' in self.config else None,
                 slack_webhook = self.config['slack_webhook'] if 'slack_webhook' in self.config else None,
+                telegram_token = self.config['telegram_token'] if 'telegram_token' in self.config else None,
+                telegram_chatid = self.config['telegram_chatif'] if 'telegram_chatid' in self.config else None,
                 ignore_ssl_errors = self.config['ignore_ssl_errors'] if 'ignore_ssl_errors' in self.config else None,
                 debug = self.config['debug'] if 'debug' in self.config else False
             )
