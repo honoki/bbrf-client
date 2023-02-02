@@ -15,7 +15,7 @@ class BBRFApi:
     do_debug = False
     requests_session = None
     
-    def __init__(self, couchdb_url, user, pwd, slack_token = None, discord_webhook = None, slack_webhook = None, slack_channel = None, ignore_ssl_errors = False, debug = False):
+    def __init__(self, couchdb_url, user, pwd, slack_token = None, discord_webhook = None, slack_webhook = None, slack_channel = None, telegram_token = None, telegram_chatid = None, ignore_ssl_errors = False, debug = False):
         auth = user+':'+pwd
         self.auth = 'Basic '+base64.b64encode(auth.encode('utf-8')).decode('utf-8')
         self.requests_session = requests.Session()
@@ -34,6 +34,10 @@ class BBRFApi:
             self.discord_webhook = discord_webhook
         if slack_webhook:
             self.slack_webhook = slack_webhook
+        if telegram_token:
+            self.telegram_token = telegram_token
+        if telegram_chatid:
+            self.telegram_chatid = telegram_chatid
         if ignore_ssl_errors:
             from urllib3.exceptions import InsecureRequestWarning
             requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
@@ -778,6 +782,16 @@ class BBRFApi:
                     requests.post(self.discord_webhook, json.dumps({'content': chunk}), headers={'Content-Type': 'application/json'})
             if self.slack_webhook:
                 requests.post(self.slack_webhook, json.dumps({'text': message}), headers={'Content-Type': 'application/json'})
+            if self.telegram_token and self.telegram_chatid:
+               telegram_url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage"
+               # we split the message in chunks to make sure we don't reach the size limit of 4096 characters
+               for i in range(0,len(message),4000):
+                    message_chunk = message[i:i+4000]
+                    params = {
+                        "chat_id": self.telegram_chatid,
+                        "text": message_chunk
+                    }
+                    requests.get(telegram_url, params=params)
                 
         for doctype in new.keys():
             if len(new[doctype]) > 0:
