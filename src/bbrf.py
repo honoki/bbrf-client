@@ -7,7 +7,7 @@ Usage:
   bbrf programs [ --show-disabled --show-empty-scope ]
   bbrf programs where <tag_name> is [ before | after ] <value> [ --show-disabled --show-empty-scope ]
   bbrf program ( active | update ( <program>... | - ) -t key:value... [--append-tags])
-  bbrf domains [ --view <view> ( -p <program> | ( --all [--show-disabled] ) ) ]
+  bbrf domains [ --resolved [ --no-private ] | --unresolved | --view <view> ] [ -p <program> | ( --all [--show-disabled] ) ]
   bbrf domains where <tag_name> is [ before | after ] <value> [ -p <program> | ( --all [--show-disabled] ) ]
   bbrf domains where <tag_name> is [ before | after ] <value> ( and <tag_name> is [ before | after ] <value> )... [ -p <program> | ( --all [--show-disabled] ) ]
   bbrf domain ( add | remove | update ) ( - | <domain>... ) [ -p <program> -s <source> --show-new ( -t key:value... [--append-tags] ) ]
@@ -33,11 +33,11 @@ Usage:
   bbrf agent ( list | ( register | remove ) <agent>... | gateway [ <url> ] )
   bbrf run <agent> [ -p <program> ]
   bbrf show ( - | <document>... )
-  bbrf remove ( - | <document>... )
+  bbrf remove ( - | <document>... ) [ --yes ]
   bbrf listen
   bbrf alert ( - | <message>... ) [ -s <source> --show-new -t key:value... ] 
   bbrf tags [<name>] [ -p <program> | --all ] 
-  bbrf server upgrade [-y]
+  bbrf server upgrade [--yes]
   bbrf proxy [ -p <program> ]
   bbrf proxy set <proxy_name> <proxy_url>
   bbrf proxy get <proxy_name>
@@ -55,6 +55,10 @@ Options:
   -q, --with-query     When listing URLs, show all URLs including queries
   -r, --root           When listing URLs, only list the roots of the URLs
   -w, --show-disabled  Combine with the flag --all/-A to include documents of disabled programs too
+  -R, --resolved       When listing domains, only show resolved domain 
+  -u, --unresolved     When listing domains, only show unresolved domains
+  -x, --no-private     Combine with --resolved/-R, only show domains that don't resolve to a private IP address
+  -y, --yes            Don't prompt for confirmation when deleting document or upgrading server
 """
 
 import os
@@ -70,7 +74,7 @@ CONFIG_FILE = '~/.bbrf/config.json'
 REGEX_DOMAIN = re.compile('^(?:[a-z0-9_](?:[a-z0-9-_]{0,61}[a-z0-9])?\\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
 # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
 REGEX_IP = re.compile('^([0-9]{1,3}\\.){3}[0-9]{1,3}(/([0-9]|[1-2][0-9]|3[0-2]))?$')
-VERSION = '1.3.0'
+VERSION = '1.3.1'
 
 class BBRFClient:
     config = {}
@@ -170,9 +174,10 @@ class BBRFClient:
     '''
     Check whether an IP belongs to a CIDR range
     '''
-    def ip_in_cidr(self, ip, cidr):
+    @staticmethod
+    def ip_in_cidr(ip, cidr):
         from ipaddress import ip_network, ip_address
-        return ip_address(ip) in ip_network(cidr)
+        return ip_address(ip) in ip_network(cidr, False)
 
     '''
     Make abstraction of where the program comes from. It should be either
@@ -673,6 +678,7 @@ class BBRFClient:
         
         # TODO: should this be matched against scope?
         # BBRF doesn't currently support IPs or CIDR as scope, so
+        
         # this would require some additional features a that level.
         # 
         # (inscope, outscope) = self.api.get_program_scope(self.get_program())
@@ -763,10 +769,17 @@ class BBRFClient:
                 if REGEX_DOMAIN.match(e) or e.startswith('*.') and REGEX_DOMAIN.match(e[2:]):
                     changed = True
                     inscope.append(e)
-                # try to parse as a URL and consider the hostname as inscope
+                # support CIDR and IPs in scope
+                elif REGEX_IP.match(e):
+                    changed = True
+                    inscope.append(e)
+                # try to parse as a URL and consider the hostname/IP as inscope
                 else:
                     u = urlparse(e).hostname
                     if u and u.lower() not in inscope and REGEX_DOMAIN.match(u.lower()):
+                        changed = True
+                        inscope.append(u.lower())
+                    if u and u.lower() not in inscope and REGEX_IP.match(u.lower()):
                         changed = True
                         inscope.append(u.lower())
         
@@ -798,10 +811,16 @@ class BBRFClient:
                 if REGEX_DOMAIN.match(e) or e.startswith('*.') and REGEX_DOMAIN.match(e[2:]):
                     changed = True
                     outscope.append(e)
+                elif REGEX_IP.match(e):
+                    changed = True
+                    outscope.append(e)
                 # try to parse as a URL and consider the hostname as outscope
                 else:
                     u = urlparse(e).hostname.lower()
                     if u not in inscope and REGEX_DOMAIN.match(u):
+                        changed = True
+                        outscope.append(u)
+                    elif u not in inscope and REGEX_IP.match(u):
                         changed = True
                         outscope.append(u)
         
@@ -900,10 +919,15 @@ class BBRFClient:
         # and only keep the elements that match all of them
         results = []
         subresults = []
+        # TODO: I'm pretty sure this doesn't work for multiple filters
+        # because docopt cannot distinguish between the subqueries,
+        # it will always assume 'before' in e.g. bbrf programs where x is before 1 and y is after 2
+        # would be interpreted as bbrf programs where x is before 1 and y is BEFORE 2
+        # not sure how to solve this atm...
         for i in range(len(self.arguments['<tag_name>'])):
             if(self.arguments['before']):
                 subresults = self.api.search_tags_between(self.arguments['<tag_name>'][i], self.arguments['<value>'][i], 'before', doctype, program_name, show_disabled=self.arguments['--show-disabled'], show_empty_scope=self.arguments['--show-empty-scope'])
-            if(self.arguments['after']):
+            elif(self.arguments['after']):
                 subresults = self.api.search_tags_between(self.arguments['<tag_name>'][i], self.arguments['<value>'][i], 'after', doctype, program_name, show_disabled=self.arguments['--show-disabled'], show_empty_scope=self.arguments['--show-empty-scope'])
             else:
                 subresults = [x if not x.startswith('._') else x[1:] for x in self.api.search_tags(self.arguments['<tag_name>'][i], self.arguments['<value>'][i], doctype, program_name, show_disabled=self.arguments['--show-disabled'], show_empty_scope=self.arguments['--show-empty-scope'])]
@@ -962,6 +986,9 @@ class BBRFClient:
             # x.example.com matches *.example.com
             if s.startswith('*.') and domain.endswith('.'+s[2:]):
                 return True
+            # CIDR match
+            if REGEX_IP.match(domain) and REGEX_IP.match(s) and BBRFClient.ip_in_cidr(domain, s):
+                return True
         return False    
     
     def debug(self, msg):
@@ -1011,6 +1038,13 @@ class BBRFClient:
         if self.arguments['domains']:
             if self.arguments['<view>']:
                 return self.list_documents_view("domain", self.arguments['<view>'], self.arguments['--all'])
+            elif self.arguments['--resolved']:
+                if self.arguments['--no-private']:
+                    return self.list_documents_view("domain", 'resolved_exclude_private', self.arguments['--all'])
+                else:
+                    return self.list_documents_view("domain", 'resolved', self.arguments['--all'])
+            elif self.arguments['--unresolved']:
+                return self.list_documents_view("domain", 'unresolved', self.arguments['--all'])
             elif self.arguments['where']:
                 return self.search_tags("domain")
             else:
@@ -1048,9 +1082,9 @@ class BBRFClient:
                     return self.add_ips(process_stdin())
             if self.arguments['remove']:
                 if self.arguments['<ip>']:
-                    self.remove_ips(self.arguments['<ip>'])
+                    return self.remove_ips(self.arguments['<ip>'])
                 elif self.arguments['-']:
-                    self.remove_ips(process_stdin())
+                    return self.remove_ips(process_stdin())
             if self.arguments['update']:
                 if self.arguments['<ip>']:
                     return self.update_ips(self.arguments['<ip>'])
@@ -1060,26 +1094,26 @@ class BBRFClient:
         if self.arguments['inscope']:
             if self.arguments['add']:
                 if self.arguments['<element>']:
-                    self.add_inscope(self.arguments['<element>'])
+                    return self.add_inscope(self.arguments['<element>'])
                 elif self.arguments['-']:
-                    self.add_inscope(process_stdin())
+                    return self.add_inscope(process_stdin())
             if self.arguments['remove']:
                 if self.arguments['<element>']:
-                    self.remove_inscope(self.arguments['<element>'])
+                    return self.remove_inscope(self.arguments['<element>'])
                 elif self.arguments['-']:
-                    self.remove_inscope(process_stdin())
+                    return self.remove_inscope(process_stdin())
                     
         if self.arguments['outscope']:
             if self.arguments['add']:
                 if self.arguments['<element>']:
-                    self.add_outscope(self.arguments['<element>'])
+                    return self.add_outscope(self.arguments['<element>'])
                 elif self.arguments['-']:
-                    self.add_outscope(process_stdin())
+                    return self.add_outscope(process_stdin())
             if self.arguments['remove']:
                 if self.arguments['<element>']:
-                    self.remove_outscope(self.arguments['<element>'])
+                    return self.remove_outscope(self.arguments['<element>'])
                 elif self.arguments['-']:
-                    self.remove_outscope(process_stdin())
+                    return self.remove_outscope(process_stdin())
                     
         if self.arguments['url']:
             if self.arguments['add']:
@@ -1127,14 +1161,14 @@ class BBRFClient:
         if self.arguments['blacklist']:
             if self.arguments['add']:
                 if self.arguments['<element>']:
-                    self.add_blacklist(self.arguments['<element>'])
+                    return self.add_blacklist(self.arguments['<element>'])
                 elif self.arguments['-']:
-                    self.add_blacklist(process_stdin())
+                    return self.add_blacklist(process_stdin())
             if self.arguments['remove']:
                 if self.arguments['<element>']:
-                    self.remove_blacklist(self.arguments['<element>'])
+                    return self.remove_blacklist(self.arguments['<element>'])
                 elif self.arguments['-']:
-                    self.remove_blacklist(process_stdin())
+                    return self.remove_blacklist(process_stdin())
         
         if self.arguments['agents']:
             return self.list_agents()
@@ -1143,7 +1177,7 @@ class BBRFClient:
             if self.arguments['list']:
                 return self.list_agents()
             if self.arguments['remove']:
-                self.remove_agents(self.arguments['<agent>'])
+                return self.remove_agents(self.arguments['<agent>'])
             if self.arguments['register']:
                 return self.register_agents(self.arguments['<agent>'])
             if self.arguments['gateway']:
@@ -1175,8 +1209,10 @@ class BBRFClient:
                 remove_ids = self.arguments['<document>']
             else:
                 remove_ids = process_stdin()
-            yn = input('WARNING! This will remove '+str(len(remove_ids))+' document(s) from your datastore and cannot be reverted.\nAre you sure you want to continue? [y/N] ')
-            if yn.lower() == 'y':
+            yn = 'N'
+            if not self.arguments['--yes']:
+                yn = input('WARNING! This will remove '+str(len(remove_ids))+' document(s) from your datastore and cannot be reverted.\nAre you sure you want to continue? [y/N] ')
+            if yn.lower() == 'y' or self.arguments['--yes']:
                 self.debug('Removing list of '+str(len(remove_ids))+' documents...')
                 removed = self.api.remove_documents(remove_ids)
                 self.debug('Successfully removed '+str(len(removed))+' documents')
@@ -1206,7 +1242,6 @@ class BBRFClient:
                 return self.get_proxy(self.arguments['<proxy_name>'])
             else:
                 return self.get_program_proxy()
-            self.api.server_upgrade(admin, password)
         
         if self.arguments['server']:
             import getpass
@@ -1220,7 +1255,7 @@ class BBRFClient:
             print('[WARNING] Could not write to config file - make sure it exists and is writable')
             
 def process_stdin():
-    return filter(lambda x: not re.match(r'^\s*$', x),  sys.stdin.read().split('\n'))
+    return list(filter(lambda x: not re.match(r'^\s*$', x),  sys.stdin.read().split('\n')))
             
 def main():
     try:

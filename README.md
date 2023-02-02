@@ -1,6 +1,6 @@
 ![PyPI](https://img.shields.io/pypi/v/bbrf?style=flat-square)
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/bbrf?style=flat-square)
-[![Twitter Follow](https://img.shields.io/twitter/follow/honoki?style=flat-square)](https://twitter.com/honoki)
+[![Mastodon](https://img.shields.io/mastodon/follow/108729222194496362?domain=https%3A%2F%2Fmastodon.social&style=flat-square)](https://mastodon.social/@honoki)
 
 ## Introduction
 

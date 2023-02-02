@@ -373,6 +373,9 @@ class BBRFApi:
             headers={"Authorization": self.auth, "Content-Type": "application/json"}
         )
         
+        if r.status_code == 504:
+            raise Exception('Server timed out - please check if the operation succeeded or repeat')
+
         if 'error' in r.json():
             raise Exception('Unexpected BBRF response: '+r.json()['error'])
         

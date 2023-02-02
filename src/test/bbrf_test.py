@@ -38,7 +38,7 @@ def test_program():
     assert json.loads(bbrf('show testtag'))['tags']['test'] == 'tag'
     assert json.loads(bbrf('show testtag'))['tags']['test2'] == 'tag2'
 
-def test_program_special_chars():
+def test_program_special_chars(monkeypatch):
     bbrf('new test/weird&char?')
     # program without scope is not going to show up
     assert 'test/weird&char?' not in bbrf('programs')
@@ -48,6 +48,7 @@ def test_program_special_chars():
     bbrf('inscope add *.weird.com')
     bbrf('domain add sub.weird.com')
     assert 'sub.weird.com' in bbrf('domains')
+    # answer 'yes' to 'are you sure you want to remove'
     bbrf('domain remove sub.weird.com')
     bbrf('inscope remove *.weird.com')
     
@@ -95,6 +96,7 @@ def test_scope():
     bbrf('inscope add *.example.com')  
     bbrf('inscope add *.sub.example.com *.dev.example.com')
     assert list_equals(bbrf('scope in'), ['*.example.com', '*.sub.example.com', '*.dev.example.com'])
+
     
     bbrf('inscope remove *.dev.example.com')
     assert list_equals(bbrf('scope in'), ['*.example.com', '*.sub.example.com'])
@@ -262,6 +264,20 @@ def test_domains_underscore():
     assert '_one.example.com' not in bbrf('domains')
     assert '_two.example.com' not in bbrf('domains')
 
+def test_domains_resolved():
+    bbrf('domain add one.example.com:1.1.1.1 two.example.com:2.2.2.2 three.example.com:127.0.0.1 four.example.com:10.0.0.1 five.example.com:192.168.0.1 six.example.com:172.16.0.0 seven.example.com:172.10.1.1')
+    bbrf('domain update one.example.com:1.1.1.1 four.example.com:10.0.0.1')
+    assert 'one.example.com' in bbrf('domains --resolved')
+    assert 'one.example.com' in bbrf('domains --resolved --no-private')
+    assert 'three.example.com' not in bbrf('domains --resolved --no-private')
+    assert 'four.example.com' not in bbrf('domains --resolved --no-private')
+    assert 'five.example.com' not in bbrf('domains --resolved --no-private')
+    assert 'six.example.com' not in bbrf('domains --resolved --no-private')
+    assert 'seven.example.com' in bbrf('domains --resolved --no-private')
+    bbrf('domain add eight.example.com')
+    assert 'eight.example.com' in bbrf('domains --unresolved')
+    bbrf('domain remove two.example.com three.example.com four.example.com five.example.com six.example.com seven.example.com eight.example.com')
+
 '''
 bbrf ips [ --filter-cdns ( -p <program> | ( --all [--show-disabled] ) ) ]
 '''
@@ -318,6 +334,17 @@ def test_ips(monkeypatch):
     # test remove
     bbrf('ip remove 4.4.4.4 5.5.5.5')
     assert list_equals(bbrf('ips'), ['1.1.1.1','2.2.2.2','3.3.3.3'])
+
+def test_cidr_scope(monkeypatch):
+    bbrf('inscope add 3.2.1.0/23')
+    assert '3.2.1.0/23' in bbrf('scope in')
+    bbrf('outscope add 3.2.1.254')
+    assert '3.2.1.254' in bbrf('scope out')
+    # at the moment this only impacts URLs
+    bbrf('url add http://1.2.3.4:80 http://3.2.1.1:80')
+    assert 'http://3.2.1.1:80' in bbrf('urls')
+    assert 'http://1.2.3.4:80' not in bbrf('urls')
+    bbrf('url remove http://3.2.1.1:80')
 
 '''
 bbrf ips where <tag_name> is [ before | after ] <value> [ -p <program> | ( --all [--show-disabled] ) ]
