@@ -207,6 +207,13 @@ pipe3.dev.example.com
 '''))
     bbrf('domain remove -')
     assert list_equals(bbrf('domains'), ['one.example.com','two.example.com','three.example.com', 'four.example.com'])
+
+    # test adding out-of-scope domains
+    bbrf('domain add not-in-scope.example.be')
+    assert 'not-in-scope.example.be' not in bbrf('domains')
+    bbrf('domain add not-in-scope.example.be --ignore-scope')
+    assert 'not-in-scope.example.be' in bbrf('domains')
+    bbrf('domain remove not-in-scope.example.be')
     
     # test ips
     assert list_equals(json.loads(bbrf('show four.example.com'))['ips'], ['4.4.4.4'])
@@ -345,6 +352,12 @@ def test_cidr_scope(monkeypatch):
     assert 'http://3.2.1.1:80' in bbrf('urls')
     assert 'http://1.2.3.4:80' not in bbrf('urls')
     bbrf('url remove http://3.2.1.1:80')
+    # ensure the URL is added if --ignore-scope is used
+    bbrf('url add http://1.2.3.4:80 http://3.2.1.1:80 --ignore-scope')
+    assert 'http://3.2.1.1:80' in bbrf('urls')
+    assert 'http://1.2.3.4:80' in bbrf('urls')
+    bbrf('url remove http://3.2.1.1:80 http://1.2.3.4:80')
+    
 
 '''
 bbrf ips where <tag_name> is [ before | after ] <value> [ -p <program> | ( --all [--show-disabled] ) ]

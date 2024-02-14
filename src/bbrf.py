@@ -10,23 +10,23 @@ Usage:
   bbrf domains [ --resolved [ --no-private ] | --unresolved | --view <view> ] [ -p <program> | ( --all [--show-disabled] ) ]
   bbrf domains where <tag_name> is [ before | after ] <value> [ -p <program> | ( --all [--show-disabled] ) ]
   bbrf domains where <tag_name> is [ before | after ] <value> ( and <tag_name> is [ before | after ] <value> )... [ -p <program> | ( --all [--show-disabled] ) ]
-  bbrf domain ( add | remove | update ) ( - | <domain>... ) [ -p <program> -s <source> --show-new ( -t key:value... [--append-tags] ) ]
+  bbrf domain ( add | remove | update ) ( - | <domain>... ) [ -p <program> -s <source> --show-new ( -t key:value... [--append-tags] ) --ignore-scope ]
   bbrf ips [ --filter-cdns ( -p <program> | ( --all [--show-disabled] ) ) ]
   bbrf ips where <tag_name> is [ before | after ] <value> [ -p <program> | ( --all [--show-disabled] ) ]
   bbrf ips where <tag_name> is [ before | after ] <value> ( and <tag_name> is [ before | after ] <value> )... [ -p <program> | ( --all [--show-disabled] ) ]
-  bbrf ip ( add | remove | update ) ( - | <ip>... ) [ -p <program> -s <source> --show-new ( -t key:value... [--append-tags] ) ]
+  bbrf ip ( add | remove | update ) ( - | <ip>... ) [ -p <program> -s <source> --show-new ( -t key:value... [--append-tags] ) --ignore-scope ]
   bbrf scope ( in | out ) [ (--wildcard [--top] ) ] [ ( -p <program> ) | ( --all [--show-disabled] ) ]
   bbrf scope filter ( in | out ) [ (--wildcard [--top] ) ] [ ( -p <program> ) | ( --all [--show-disabled] ) ]
   bbrf ( inscope | outscope ) ( add | remove ) ( - | <element>... ) [ -p <program> ]
   bbrf urls [ -d <hostname> | ( -p <program> | ( --all [--show-disabled] ) ) ] [ --with-query | --root ]
   bbrf urls where <tag_name> is [ before | after ] <value> [ -p <program> | ( --all [--show-disabled] ) ]
   bbrf urls where <tag_name> is [ before | after ] <value> ( and <tag_name> is [ before | after ] <value> )... [ -p <program> | ( --all [--show-disabled] ) ]
-  bbrf url add ( - | <url>... ) [ -d <hostname> -s <source> -p <program> --show-new ( -t key:value... [--append-tags] ) ]
+  bbrf url add ( - | <url>... ) [ -d <hostname> -s <source> -p <program> --show-new ( -t key:value... [--append-tags] ) --ignore-scope ]
   bbrf url remove ( - | <url>... )
   bbrf services [ -p <program> | ( --all [--show-disabled] ) ]
   bbrf services where <tag_name> is [ before | after ] <value> [ -p <program> | ( --all [--show-disabled] ) ]
   bbrf services where <tag_name> is [ before | after ] <value> ( and <tag_name> is [ before | after ] <value> )... [ -p <program> | ( --all [--show-disabled] ) ]
-  bbrf service add ( - | <service>... ) [ -s <source> -p <program> --show-new ( -t key:value... [ --append-tags ] ) ]
+  bbrf service add ( - | <service>... ) [ -s <source> -p <program> --show-new ( -t key:value... [ --append-tags ] ) --ignore-scope ]
   bbrf service remove ( - | <service>... )
   bbrf blacklist ( add | remove ) ( - | <element>... ) [ -p <program> ]
   bbrf agents
@@ -59,6 +59,7 @@ Options:
   -u, --unresolved     When listing domains, only show unresolved domains
   -x, --no-private     Combine with --resolved/-R, only show domains that don't resolve to a private IP address
   -y, --yes            Don't prompt for confirmation when deleting document or upgrading server
+  -f, --ignore-scope   Ignore the scope (i.e. force) when adding a domain, url, ip or service
 """
 
 import os
@@ -74,7 +75,7 @@ CONFIG_FILE = '~/.bbrf/config.json'
 REGEX_DOMAIN = re.compile('^(?:[a-z0-9_](?:[a-z0-9-_]{0,61}[a-z0-9])?\\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$')
 # regex to match IP addresses and CIDR ranges - thanks https://www.regextester.com/93987
 REGEX_IP = re.compile('^([0-9]{1,3}\\.){3}[0-9]{1,3}(/([0-9]|[1-2][0-9]|3[0-2]))?$')
-VERSION = '1.3.1'
+VERSION = '1.3.2'
 
 class BBRFClient:
     config = {}
@@ -304,13 +305,14 @@ class BBRFClient:
             if not REGEX_DOMAIN.match(domain):
                 self.debug('REGEX_DOMAIN failed: '+domain)
                 continue
-            # It may not be explicitly outscoped
-            if self.matches_scope(domain, outscope):
+            # It may not be explicitly outscoped unless --ignore-scope is set
+            if not self.arguments['--ignore-scope'] and self.matches_scope(domain, outscope):
                 self.debug('outscope: '+domain)
                 continue
             # It must match the in scope, except if we're trying to @INFER the program later,
             # which means we cannot verify the scope here
-            if not self.get_program() == '@INFER' and not self.matches_scope(domain, inscope):
+            # ur unless --ignore-scope is set
+            if not self.get_program() == '@INFER' and not self.arguments['--ignore-scope'] and not self.matches_scope(domain, inscope):
                 self.debug('Not inscope: '+domain)
                 continue
                 
@@ -577,12 +579,12 @@ class BBRFClient:
             if not REGEX_DOMAIN.match(hostname) and not REGEX_IP.match(hostname):
                 self.debug("Illegal hostname: "+hostname)
                 continue
-            # It may not be explicitly outscoped
-            if not self.get_program() == '@INFER' and self.matches_scope(hostname, outscope):
+            # It may not be explicitly outscoped, unless --ignore-scope is set
+            if not self.get_program() == '@INFER' and not self.arguments['--ignore-scope'] and self.matches_scope(hostname, outscope):
                 self.debug("skipping outscoped hostname: "+hostname)
                 continue
-            # It must match the in scope
-            if not self.get_program() == '@INFER' and not self.matches_scope(hostname, inscope):
+            # It must match the in scope, unless --ignore-scope is set
+            if not self.get_program() == '@INFER' and not self.arguments['--ignore-scope'] and not self.matches_scope(hostname, inscope):
                 self.debug("skipping not inscope hostname: "+hostname)
                 continue
             

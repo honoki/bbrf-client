@@ -35,8 +35,7 @@ class BBRFApi:
         if slack_webhook:
             self.slack_webhook = slack_webhook
         if ignore_ssl_errors:
-            from urllib3.exceptions import InsecureRequestWarning
-            requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
+            requests.packages.urllib3.disable_warnings()
             self.requests_session.verify = False
         self.BBRF_API = couchdb_url
     
