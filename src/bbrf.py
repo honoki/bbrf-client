@@ -378,7 +378,7 @@ class BBRFClient:
             
             # split ips if provided
             if ':' in domain:
-                domain, ips = domain.split(':')
+                domain, ips = domain.split(':',1)
                 ips = ips.split(',')
                 
                 for ip in ips:
