@@ -3,7 +3,6 @@ import base64
 import json
 from slack_sdk import WebClient
 import logging
-
 class BBRFApi:
     BBRF_API = None
     auth = None
@@ -795,16 +794,26 @@ class BBRFApi:
         # first iteration without queueing: just
         # run the programs all at once in the background
         from subprocess import Popen
-        from os import listdir
+        from os import listdir, environ
         from os.path import isfile, join, expanduser
         hookdir = expanduser('~/.bbrf/hooks/'+doctype+'/'+hooktype+'/')
         try:
             scripts = [join(hookdir, f) for f in listdir(hookdir) if isfile(join(hookdir, f)) and f.endswith('.sh')]
+            # Create a new environment based on the current one
+            env = dict(environ)
+            
+            # Ensure the current PATH is included
+            if 'PATH' in env:
+                env['PATH'] = f"{os.getcwd()}:{env['PATH']}"
+            else:
+                env['PATH'] = os.getcwd()
+
             for script in scripts:
                 print('Running '+script+'...')
                 args = [script]
                 args.extend(identifiers)
-                p = Popen(args)
+
+                p = Popen(args, env=env)
         except FileNotFoundError:
             pass
         except Exception as e:
