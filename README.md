@@ -354,3 +354,10 @@ Get the proxy settings of a program with `bbrf proxy -p my_hackerone_program`. F
 # note that the use of double quotes will allow this to work even if no proxy is configured for the current program
 curl -x "$(bbrf proxy)" ifconfig.co
 ```
+
+## See also
+
+* [BBRF Server](https://github.com/honoki/bbrf-server)
+* [BBRF Dashboard](https://github.com/honoki/bbrf-dashboard)
+* [BBRF Burp Plugin](https://github.com/honoki/bbrf-burp-plugin)
+* [BBRF Agents](https://github.com/honoki/bbrf-agents)
